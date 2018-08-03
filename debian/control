@@ -1,6 +1,7 @@
 Source: mpdecimal
 Priority: optional
-Maintainer: Matthias Klose <doko@debian.org>
+Maintainer: Pexip AS <packaging@pexip.com>
+XSBC-Pexip-Original-Maintainer: Matthias Klose <doko@debian.org>
 Build-Depends: debhelper (>= 9), autotools-dev,
 # gmp is only used when running the tests from the separate test tarball
  libgmp-dev
@@ -8,6 +9,7 @@ Build-Depends-Indep: python3-sphinx
 Standards-Version: 3.9.7
 Section: libs
 Homepage: http://www.bytereef.org/mpdecimal/index.html
+XS-Pexip-Upstream: http://ftp.debian.org/debian/ stretch
 
 Package: libmpdec-dev
 Section: libdevel
