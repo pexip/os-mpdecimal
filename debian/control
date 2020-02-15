@@ -9,7 +9,7 @@ Build-Depends-Indep: python3-sphinx
 Standards-Version: 3.9.7
 Section: libs
 Homepage: http://www.bytereef.org/mpdecimal/index.html
-XS-Pexip-Upstream: http://ftp.debian.org/debian/ stretch
+XS-Pexip-Upstream: http://ftp.debian.org/debian/ buster
 
 Package: libmpdec-dev
 Section: libdevel
