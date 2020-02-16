@@ -1,3 +1,10 @@
+mpdecimal (2.4.2-2) unstable; urgency=medium
+
+  * Bump standards version.
+  * Fix building the docs in recent unstable (Steve Langasek). Closes: #887735.
+
+ -- Matthias Klose <doko@debian.org>  Mon, 23 Apr 2018 09:44:34 +0200
+
 mpdecimal (2.4.2-1pexip1) pexip; urgency=medium
 
   * Prepare Pexip packaging
