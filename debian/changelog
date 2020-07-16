@@ -1,3 +1,9 @@
+mpdecimal (2.4.2-2pexip2) pexip; urgency=medium
+
+  * Rebuild in buster environment
+
+ -- Steve McIntyre <steve.mcintyre@pexip.com>  Thu, 16 Jul 2020 01:11:28 +0000
+
 mpdecimal (2.4.2-2pexip1) pexip; urgency=medium
 
   * Migrate to Buster
