@@ -24,10 +24,7 @@ make check
 # On a fast machine 5 min for CONFIG_64 and 10 min for CONFIG_32.
 make check_alloc
 
-
-# Production build:
-make clean
-make CFLAGS=-DNDEBUG
+# Install.
 make install
 
 
@@ -58,6 +55,18 @@ make install
 #    5. ansi32      - 32-bit OS, ANSI C
 #
 #    6. ansi-legacy - 32-bit OS, compiler without uint64_t
+#
+# Multilib builds (Darwin and AIX):
+#
+#    7. universal   - builds a 64-bit or a 32-bit library according to the
+#                     compiler ABI settings:
+#
+#                        Darwin:    -m64 or -m32
+#                        AIX (gcc): -maix64 or -maix32
+#                        AIX (xlc): -q64 or -q32
+#
+#                     The generated header file is suitable for both 64-bit
+#                     and 32-bit installs.
 #
 
 #

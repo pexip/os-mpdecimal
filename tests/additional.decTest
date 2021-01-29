@@ -26,4 +26,6 @@ Dectest: ./testdata/getint.decTest
 Dectest: ./testdata/cov.decTest
 Dectest: ./testdata/extra.decTest
 
+Dectest: ./testdata/maxprec.decTest
+
 

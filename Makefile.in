@@ -5,10 +5,24 @@
 
 
 PACKAGE_TARNAME = @PACKAGE_TARNAME@
+INSTALL = @INSTALL@
+
+ENABLE_SHARED = @ENABLE_SHARED@
+ENABLE_CXX = @ENABLE_CXX@
+PROFILE = @PROFILE@
+
 LIBSTATIC = @LIBSTATIC@
+LIBNAME = @LIBNAME@
 LIBSONAME = @LIBSONAME@
 LIBSHARED = @LIBSHARED@
-INSTALL = @INSTALL@
+LIBIMPORT = @LIBIMPORT@
+
+LIBSTATIC_CXX = @LIBSTATIC_CXX@
+LIBNAME_CXX = @LIBNAME_CXX@
+LIBSONAME_CXX = @LIBSONAME_CXX@
+LIBSHARED_CXX = @LIBSHARED_CXX@
+
+LIBSHARED_USE_AR = @LIBSHARED_USE_AR@
 
 prefix = @prefix@
 exec_prefix = @exec_prefix@
@@ -18,39 +32,105 @@ datarootdir = @datarootdir@
 docdir = @docdir@
 
 
-default: FORCE
-	cd libmpdec && $(MAKE)
+ifeq ($(ENABLE_CXX), yes)
+default: libcxx
 
-check: default
-	cd tests && $(MAKE) && ./runshort.sh
+check:
+	cd libmpdec && $(MAKE) check
+	cd libmpdec++ && $(MAKE) check
 
-check_alloc: default
-	cd tests && $(MAKE) && ./runshort_alloc.sh
+check_local:
+	cd libmpdec && $(MAKE) check_local
+	cd libmpdec++ && $(MAKE) check_local
 
-profile: FORCE
-	cd libmpdec && $(MAKE) profile
+check_alloc:
+	cd libmpdec && $(MAKE) check_alloc
+	cd libmpdec++ && $(MAKE) check_alloc
+
+ifeq ($(LIBSHARED_USE_AR), yes)
+install: install_libcxx install_imp install_cxx_doc
+else
+ifeq ($(ENABLE_SHARED), yes)
+install: install_shared_libcxx install_cxx_doc
+else
+install: install_libcxx install_cxx_doc
+endif
+endif
+
+else
+default: lib
+
+check:
+	cd libmpdec && $(MAKE) check
+
+check_local:
+	cd libmpdec && $(MAKE) check_local
+
+check_alloc:
+	cd libmpdec && $(MAKE) check_alloc
+
+ifeq ($(LIBSHARED_USE_AR), yes)
+install: install_lib install_imp install_doc
+else
+ifeq ($(ENABLE_SHARED), yes)
+install: install_shared_lib install_doc
+else
+install: install_lib install_doc
+endif
+endif
+
+endif
 
 
-install: FORCE
+lib:
+	cd libmpdec && $(MAKE) $(PROFILE)
+
+libcxx: lib
+	cd libmpdec++ && $(MAKE) $(PROFILE)
+
+
+install_lib: lib
 	$(INSTALL) -d -m 755 $(DESTDIR)$(includedir)
 	$(INSTALL) -m 644 libmpdec/mpdecimal.h $(DESTDIR)$(includedir)
 	$(INSTALL) -d -m 755 $(DESTDIR)$(libdir)
 	$(INSTALL) -m 644 libmpdec/$(LIBSTATIC) $(DESTDIR)$(libdir)
+
+install_shared_lib: install_lib
 	$(INSTALL) -m 755 libmpdec/$(LIBSHARED) $(DESTDIR)$(libdir)
-	cd $(DESTDIR)$(libdir) && ln -sf $(LIBSHARED) $(LIBSONAME) && ln -sf $(LIBSHARED) libmpdec.so
+	cd $(DESTDIR)$(libdir) && ln -sf $(LIBSHARED) $(LIBSONAME) && ln -sf $(LIBSHARED) $(LIBNAME)
+
+install_imp:
+	$(INSTALL) -m 644 libmpdec/$(LIBIMPORT) $(DESTDIR)$(libdir)
+
+install_doc:
 	$(INSTALL) -d -m 755 $(DESTDIR)$(docdir)
-	cp -R doc/* $(DESTDIR)$(docdir)
+	cp -Rp doc/libmpdec $(DESTDIR)$(docdir)
 
-clean: FORCE
+install_libcxx: libcxx install_lib
+	$(INSTALL) -d -m 755 $(DESTDIR)$(includedir)
+	$(INSTALL) -m 644 libmpdec++/decimal.hh $(DESTDIR)$(includedir)
+	$(INSTALL) -d -m 755 $(DESTDIR)$(libdir)
+	$(INSTALL) -m 644 libmpdec++/$(LIBSTATIC_CXX) $(DESTDIR)$(libdir)
+
+install_shared_libcxx: install_shared_lib install_libcxx
+	$(INSTALL) -m 755 libmpdec++/$(LIBSHARED_CXX) $(DESTDIR)$(libdir)
+	cd $(DESTDIR)$(libdir) && ln -sf $(LIBSHARED_CXX) $(LIBSONAME_CXX) && ln -sf $(LIBSHARED_CXX) $(LIBNAME_CXX)
+
+install_cxx_doc: install_doc
+	cp -Rp doc/libmpdec++ $(DESTDIR)$(docdir)
+
+
+clean:
 	cd libmpdec && if [ -f Makefile ]; then $(MAKE) clean; else exit 0; fi
+	cd libmpdec++ && if [ -f Makefile ]; then $(MAKE) clean; else exit 0; fi
 	cd tests && if [ -f Makefile ]; then $(MAKE) clean; else exit 0; fi
+	cd tests++ && if [ -f Makefile ]; then $(MAKE) clean; else exit 0; fi
 
-distclean: FORCE
+distclean:
 	cd libmpdec && if [ -f Makefile ]; then $(MAKE) distclean; else exit 0; fi
+	cd libmpdec++ && if [ -f Makefile ]; then $(MAKE) distclean; else exit 0; fi
 	cd tests && if [ -f Makefile ]; then $(MAKE) distclean; else exit 0; fi
+	cd tests++ && if [ -f Makefile ]; then $(MAKE) distclean; else exit 0; fi
+	cd tests++/compile_tests && rm -f *.o
 	rm -f config.h config.log config.status Makefile
-
-FORCE:
-
-
-
+	rm -rf autom4te.cache

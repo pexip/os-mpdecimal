@@ -1,57 +1,68 @@
 
 
-libmpdec build instructions for Visual Studio
-=============================================
+libmpdec and libmpdec++ build instructions for Visual Studio
+============================================================
+
+   For all builds:  After a successful build, the static libraries, the dynamic
+   libraries and the header files should be in the dist64 or dist32 directory.
+
+   The unit tests attempt to download the official IBM test cases (text files).
+   No executables are downloaded.
 
 
-   Requirements
-   ------------
+   64-bit release build
+   --------------------
 
-      - Visual Studio 2008 or later.
+      # Clean the build directory if files from a previous build are present.
+      vcdistclean.bat
 
-      - For the scripted build vcvarsall.bat must be in the PATH.
+      # Build the libraries.  Optionally use pgobuild64.bat instead of vcbuild64.bat
+      # for a profile-guided optimization build.
+      vcbuild64.bat
 
-
-   64-bit build
-   ------------
-
-      Run vcbuild64.bat. If successful, the static library, the dynamic
-      library, the common header file and an executable for running the
-      unit tests should be in the dist64 directory.
+      # Run the unit tests.
+      runshort.bat
 
 
-   32-bit build
-   ------------
-
-      Run vcbuild32.bat. If successful, the static library, the dynamic
-      library, the common header file and an executable for running the
-      unit tests should be in the dist32 directory.
-
-
-   Get the unit tests
+   64-bit debug build
    ------------------
 
-      Run gettests.bat. This creates a directory 'testdata' and copies
-      additional tests into the directory. If wget is installed (Cygwin),
-      the script tries to download IBM's official test cases and copy them
-      to 'testdata'.
+      # Clean the build directory if files from a previous build are present.
+      vcdistclean.bat
 
-      Otherwise, download:
+      # Build the libraries.
+      vcbuild64.bat /d
 
-         http://speleotrove.com/decimal/dectest.zip
-
-      Unzip the archive such that all .decTest files from the archive are in
-      the testdata directory. The directory structure should look like this:
-
-         vcbuild\official.decTest
-         vcbuild\additional.decTest
-         vcbuild\testdata\*.decTest
+      # Run the unit tests.
+      runshort.bat /d
 
 
-   Run the unit tests
-   ------------------
+   32-bit release build
+   --------------------
 
-      Depending on the build, run runtest64.bat or runtest32.bat.
+      # Clean the build directory if files from a previous build are present.
+      vcdistclean.bat
+
+      # Build the libraries.  Optionally use pgobuild32.bat instead of vcbuild32.bat
+      # for a profile-guided optimization build.
+      vcbuild32.bat
+
+      # Run the unit tests.
+      runshort.bat
+
+
+   32-bit debug build
+   --------------------
+
+      # Clean the build directory if files from a previous build are present.
+      vcdistclean.bat
+
+      # Build the libraries.
+      vcbuild32.bat /d
+
+      # Run the unit tests.
+      runshort.bat /d
+
 
 
 
