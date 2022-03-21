@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2016 Stefan Krah. All rights reserved.
+ * Copyright (c) 2008-2020 Stefan Krah. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,24 +32,24 @@
 
 
 #include "mpdecimal.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stdarg.h>
+
+#include <assert.h>
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
 #include <locale.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <time.h>
-#include "io.h"
-#include "memory.h"
-#include "mptest.h"
-#include "malloc_fail.h"
+
+#include "test.h"
+#include "vctest.h"
 
 
 #define MAXLINE 400000
 #define MAXTOKEN 32
-
 
 #ifndef _MSC_VER
   #include <inttypes.h>
@@ -59,9 +59,27 @@
 #endif
 
 
-int global_failure = 0;
-int file_failure = 0;
+static int generated = 0;
+static int global_failure = 0;
+static int file_failure = 0;
 
+
+static mpd_ssize_t
+strtossize(const char *s, char **end, int base)
+{
+    int64_t retval;
+
+    errno = 0;
+    retval = _mpd_strtossize(s, end, base);
+    if (errno == 0 && (retval > MPD_SSIZE_MAX || retval < MPD_SSIZE_MIN)) {
+        errno = ERANGE;
+    }
+    if (errno == ERANGE) {
+        return (retval < 0) ? MPD_SSIZE_MIN : MPD_SSIZE_MAX;
+    }
+
+    return (mpd_ssize_t)retval;
+}
 
 static void
 mpd_init_rand(mpd_t *x)
@@ -90,11 +108,11 @@ mpd_init_rand(mpd_t *x)
 static void
 mpd_readcontext(mpd_context_t *ctx)
 {
-#if defined(CONFIG_64)
+#if defined(MPD_CONFIG_64)
     ctx->prec=1070000000000000000;
     ctx->emax=1070000000000000000;
     ctx->emin=-1070000000000000000;
-#elif defined(CONFIG_32)
+#elif defined(MPD_CONFIG_32)
     /* These ranges are needed for the official testsuite
      * and are generally not problematic at all. */
     ctx->prec=1070000000;
@@ -108,17 +126,17 @@ mpd_readcontext(mpd_context_t *ctx)
     ctx->status=0;
     ctx->newtrap=0;
     ctx->clamp=0;
-    ctx->allcr=0;
+    ctx->allcr=1;
 }
 
 static void
 mpd_testcontext(mpd_context_t *ctx)
 {
-#if defined(CONFIG_64)
+#if defined(MPD_CONFIG_64)
     ctx->prec=999999999;
     ctx->emax=MPD_MAX_EMAX;
     ctx->emin=MPD_MIN_EMIN;
-#elif defined(CONFIG_32)
+#elif defined(MPD_CONFIG_32)
     /* These ranges are needed for the official testsuite
      * and are generally not problematic at all. */
     ctx->prec=999999999;
@@ -132,7 +150,7 @@ mpd_testcontext(mpd_context_t *ctx)
     ctx->status=0;
     ctx->newtrap=0;
     ctx->clamp=0;
-    ctx->allcr=0;
+    ctx->allcr=1;
 }
 
 /* Known differences that are within the spec */
@@ -148,7 +166,7 @@ struct status_diff {
     uint32_t expected;
 };
 
-struct result_diff ulp_cases[] = {
+static struct result_diff ulp_cases[] = {
     /* Cases where the result is allowed to differ by less than one ULP.
      * Only needed if ctx->allcr is 0. */
     { "expx013", "1.001000", "1.001001" },
@@ -161,13 +179,13 @@ struct result_diff ulp_cases[] = {
     {NULL, NULL, NULL}
 };
 
-struct status_diff status_cases[] = {
+static struct status_diff status_cases[] = {
     /* With a reduced working precision in mpd_qpow() the status matches. */
     { "pwsx803", MPD_Inexact|MPD_Rounded|MPD_Subnormal|MPD_Underflow, MPD_Inexact|MPD_Rounded },
     {NULL, 0, 0}
 };
 
-const char *skipit[] = {
+static const char *skipit[] = {
     /* NULL reference, decimal16, decimal32, or decimal128 */
     "absx900",
     "addx9990",
@@ -380,13 +398,13 @@ const char *skipit[] = {
 static inline int
 startswith(const char *token, const char *s)
 {
-    return strncasecmp(token, s, strlen(s)) == 0;
+    return token != NULL && strncasecmp(token, s, strlen(s)) == 0;
 }
 
 static inline int
 eqtoken(const char *token, const char *s)
 {
-    return strcasecmp(token, s) == 0;
+    return token != NULL && strcasecmp(token, s) == 0;
 }
 
 static int
@@ -396,7 +414,7 @@ check_skip(char *id)
 
     for (i = 0; skipit[i] != NULL; i++) {
         if (eqtoken(id, skipit[i])) {
-#if RT_VERBOSITY == 2
+#if defined(RT_VERBOSITY) && RT_VERBOSITY == 2
             fprintf(stderr, "SKIP: %s\n", id);
 #endif
             return 1;
@@ -409,15 +427,17 @@ check_skip(char *id)
 static char *
 nexttoken(char *cp)
 {
-    static char *start;
-    static char *end;
+    static char *start = NULL;
+    static char *end = NULL;
 
-    if (cp == NULL)
+    if (cp == NULL) {
+        assert(end != NULL);
         cp = end;
+    }
 
     for (; *cp != '\0'; cp++) {
         if (isspace((unsigned char)*cp)) {
-            ;
+            /* empty */
         }
         else if (*cp == '"') {
             start = end = cp+1;
@@ -586,7 +606,7 @@ compare_expected(const char *calc, const char *expected, uint32_t expected_statu
         if (file_failure == 0) {
             fputs("\n\n", stderr);
         }
-        mpd_snprint_flags(ctxstatus, MPD_MAX_FLAG_STRING, ctx->status),
+        mpd_snprint_flags(ctxstatus, MPD_MAX_FLAG_STRING, ctx->status);
         mpd_snprint_flags(expstatus, MPD_MAX_FLAG_STRING, expected_status);
         fprintf(stderr, "FAIL: %s: status:  calc: %s  expected: %s\n",
                 id, ctxstatus, expstatus);
@@ -610,7 +630,7 @@ equalmem(const mpd_t *a, const mpd_t *b)
 }
 
 static void
-check_equalmem(const mpd_t *a, const mpd_t *b, char *id)
+check_equalmem(const mpd_t *a, const mpd_t *b, const char *id)
 {
     if (!equalmem(a, b)) {
         fprintf(stderr, "FAIL: const arg changed: %s\n", id);
@@ -812,9 +832,71 @@ scan_3ops_result(mpd_t *op1, mpd_t *op2, mpd_t *op3, char **result, char *token[
     return 7;
 }
 
-mpd_t *op, *op1, *op2, *op3;
-mpd_t *tmp, *tmp1, *tmp2, *tmp3;
-mpd_t *result, *result1, *result2;
+static mpd_t *op, *op1, *op2, *op3;
+static mpd_t *tmp, *tmp1, *tmp2, *tmp3;
+static mpd_t *result, *result1, *result2;
+
+/* Test triple conversion */
+static void
+_TripleTest(const mpd_t *a, mpd_context_t *ctx, const char *testno)
+{
+    mpd_uint128_triple_t triple;
+    uint32_t status = 0;
+    int ret = 0;
+
+#ifdef MPD_CONFIG_32
+    /*
+     * 32-bit: as_triple() expects well-formed decimals. Skip test cases
+     * that use the extended exponent, which is safe in the tests but not
+     * in production.
+     */
+     if (a->exp < MPD_MIN_ETINY || a->exp > MPD_MAX_EMAX) {
+         return;
+     }
+#endif
+
+    triple = mpd_as_uint128_triple(a);
+    switch (triple.tag) {
+    case MPD_TRIPLE_QNAN: case MPD_TRIPLE_SNAN:
+        ASSERT(triple.exp == 0)
+        break;
+    case MPD_TRIPLE_INF:
+        ASSERT(triple.hi == 0 && triple.lo == 0 && triple.exp == 0)
+        break;
+    case MPD_TRIPLE_NORMAL:
+        break;
+    case MPD_TRIPLE_ERROR:
+        ASSERT(triple.sign == 0 && triple.hi == 0 && triple.lo == 0 && triple.exp == 0)
+        break;
+    }
+
+    /* Allocation failures (only occur in from_triple()) */
+    for (alloc_fail = 1; alloc_fail < INT_MAX; alloc_fail++) {
+        mpd_init_rand(result);
+
+        mpd_set_alloc_fail(ctx);
+        status = 0;
+        ret = mpd_from_uint128_triple(result, &triple, &status);
+        mpd_set_alloc(ctx);
+
+        if (!(status&MPD_Malloc_error)) {
+            break;
+        }
+        ASSERT(ret == -1)
+        ASSERT(mpd_isnan(result))
+    }
+
+    if (triple.tag != MPD_TRIPLE_ERROR) {
+        ASSERT(ret == 0)
+        ASSERT(status == 0)
+        check_equalmem(result, a, testno);
+    }
+    else {
+        ASSERT(ret == -1)
+        ASSERT(status == MPD_Conversion_syntax)
+        ASSERT(mpd_isnan(result))
+    }
+}
 
 /* Test both versions of mpd_to_sci. Do not use this if alloc_fail is set,
    since MPD_Malloc_error will only be triggered for one of the functions. */
@@ -850,14 +932,18 @@ _mpd_to_sci(const mpd_t *dec, int fmt)
 static void
 _cp_MpdCtx(char **token, char *(*func)(const mpd_t *, int), mpd_context_t *ctx)
 {
+    mpd_context_t maxctx;
     char *calc;
-    char *expected, *expected_fail;
+    char *expected, *expected_fail = NULL;
     uint32_t expstatus;
     int n;
 
-    ctx->status = 0;
-    /* status should be set in conversion */
-    n = scan_1op_result(op, &expected, token, ctx);
+    mpd_readcontext(&maxctx);
+
+    mpd_context_t *workctx = ctx;
+    workctx->status = 0;
+    n = scan_1op_result(op, &expected, token, workctx);
+    _TripleTest(op, ctx, token[0]);
 
     /* scan expected conditions */
     expstatus = scan_conditions(token+n);
@@ -865,13 +951,13 @@ _cp_MpdCtx(char **token, char *(*func)(const mpd_t *, int), mpd_context_t *ctx)
     /* Allocation failures for mpd_set_string */
     for (alloc_fail = 1; alloc_fail < INT_MAX; alloc_fail++) {
         mpd_init_rand(tmp);
-        ctx->status = 0;
+        workctx->status = 0;
 
-        mpd_set_alloc_fail(ctx);
-        (void)scan_1op_result(tmp, &expected_fail, token, ctx);
-        mpd_set_alloc(ctx);
+        mpd_set_alloc_fail(workctx);
+        (void)scan_1op_result(tmp, &expected_fail, token, workctx);
+        mpd_set_alloc(workctx);
 
-        if (!(ctx->status&MPD_Malloc_error)) {
+        if (!(workctx->status&MPD_Malloc_error)) {
             break;
         }
         ASSERT(mpd_isnan(tmp))
@@ -882,30 +968,30 @@ _cp_MpdCtx(char **token, char *(*func)(const mpd_t *, int), mpd_context_t *ctx)
 
     /* make a copy of the operand */
     mpd_init_rand(tmp);
-    mpd_copy(tmp, op, ctx);
+    mpd_copy(tmp, op, workctx);
 
     calc = func(tmp, 1);
 
     /* compare the calculated result to the expected result */
-    compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    compare_expected(calc, expected, expstatus, token[0], workctx);
+    mpd_free(calc);
     check_equalmem(tmp, op, token[0]);
 
     /* Allocation failures */
     for (alloc_fail = 1; alloc_fail < INT_MAX; alloc_fail++) {
         mpd_init_rand(tmp);
-        mpd_copy(tmp, op, ctx);
+        mpd_copy(tmp, op, workctx);
 
-        mpd_set_alloc_fail(ctx);
+        mpd_set_alloc_fail(workctx);
         calc = func(tmp, 1);
-        mpd_set_alloc(ctx);
+        mpd_set_alloc(workctx);
 
         if (calc != NULL) {
             break;
         }
     }
-    compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    compare_expected(calc, expected, expstatus, token[0], workctx);
+    mpd_free(calc);
     check_equalmem(tmp, op, token[0]);
 }
 
@@ -913,15 +999,19 @@ _cp_MpdCtx(char **token, char *(*func)(const mpd_t *, int), mpd_context_t *ctx)
 static void
 sci_eng_size(char **token, mpd_ssize_t (*func)(char **, const mpd_t *, int), mpd_context_t *ctx)
 {
+    mpd_context_t maxctx;
     char *calc;
-    char *expected, *expected_fail;
+    char *expected, *expected_fail = NULL;
     uint32_t expstatus;
     mpd_ssize_t size;
     int n;
 
-    ctx->status = 0;
-    /* status should be set in conversion */
-    n = scan_1op_result(op, &expected, token, ctx);
+    mpd_readcontext(&maxctx);
+
+    mpd_context_t *workctx = ctx;
+    workctx->status = 0;
+    n = scan_1op_result(op, &expected, token, workctx);
+    _TripleTest(op, ctx, token[0]);
 
     /* scan expected conditions */
     expstatus = scan_conditions(token+n);
@@ -929,13 +1019,13 @@ sci_eng_size(char **token, mpd_ssize_t (*func)(char **, const mpd_t *, int), mpd
     /* Allocation failures for mpd_set_string */
     for (alloc_fail = 1; alloc_fail < INT_MAX; alloc_fail++) {
         mpd_init_rand(tmp);
-        ctx->status = 0;
+        workctx->status = 0;
 
-        mpd_set_alloc_fail(ctx);
-        (void)scan_1op_result(tmp, &expected_fail, token, ctx);
-        mpd_set_alloc(ctx);
+        mpd_set_alloc_fail(workctx);
+        (void)scan_1op_result(tmp, &expected_fail, token, workctx);
+        mpd_set_alloc(workctx);
 
-        if (!(ctx->status&MPD_Malloc_error)) {
+        if (!(workctx->status&MPD_Malloc_error)) {
             break;
         }
         ASSERT(mpd_isnan(tmp))
@@ -946,32 +1036,32 @@ sci_eng_size(char **token, mpd_ssize_t (*func)(char **, const mpd_t *, int), mpd
 
     /* make a copy of the operand */
     mpd_init_rand(tmp);
-    mpd_copy(tmp, op, ctx);
+    mpd_copy(tmp, op, workctx);
 
     size = func(&calc, tmp, 1);
-    ASSERT(size == (mpd_ssize_t)strlen(calc));
+    ASSERT(size == (mpd_ssize_t)strlen(calc))
 
     /* compare the calculated result to the expected result */
-    compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    compare_expected(calc, expected, expstatus, token[0], workctx);
+    mpd_free(calc);
     check_equalmem(tmp, op, token[0]);
 
     /* Allocation failures */
     for (alloc_fail = 1; alloc_fail < INT_MAX; alloc_fail++) {
         mpd_init_rand(tmp);
-        mpd_copy(tmp, op, ctx);
+        mpd_copy(tmp, op, workctx);
 
-        mpd_set_alloc_fail(ctx);
+        mpd_set_alloc_fail(workctx);
         size = func(&calc, tmp, 1);
-        mpd_set_alloc(ctx);
+        mpd_set_alloc(workctx);
 
         if (calc != NULL) {
-            ASSERT(size == (mpd_ssize_t)strlen(calc));
+            ASSERT(size == (mpd_ssize_t)strlen(calc))
             break;
         }
     }
-    compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    compare_expected(calc, expected, expstatus, token[0], workctx);
+    mpd_free(calc);
     check_equalmem(tmp, op, token[0]);
 }
 
@@ -981,12 +1071,12 @@ static char *
 parse_escapes(const char *s)
 {
     char hex[5];
-    char *result, *cp;
+    char *res, *cp;
     unsigned int u;
     int n;
 
-    cp = result = malloc(strlen(s)+1);
-    if (result == NULL) {
+    cp = res = malloc(strlen(s)+1);
+    if (res == NULL) {
         return NULL;
     }
 
@@ -996,14 +1086,14 @@ parse_escapes(const char *s)
         if (*s == '\\' && *(s+1) == 'x') {
             for (n = 1; n < 4; n++) {
                 if (!s[n]) {
-                    free(result);
+                    free(res);
                     return NULL;
                 }
                 hex[n] = s[n];
             }
             hex[n] = '\0';
             sscanf(hex, "%x%n", &u, &n);
-            *cp++ = u;
+            *cp++ = (char)u;
             s += n;
         }
         else {
@@ -1012,7 +1102,7 @@ parse_escapes(const char *s)
     }
 
     *cp = '\0';
-    return result;
+    return res;
 }
 
 /*
@@ -1036,6 +1126,7 @@ _cp_MpdFmtCtx(char **token, char *(*func)(const mpd_t *, const char *, mpd_conte
 
     /* conversion should be done as if there were no limits */
     n = scan_1op_str_result(op1, &fmt, &expected, token, &maxctx);
+    _TripleTest(op1, ctx, token[0]);
 
     fmt = parse_escapes(fmt);
     expected = parse_escapes(expected);
@@ -1048,12 +1139,14 @@ _cp_MpdFmtCtx(char **token, char *(*func)(const mpd_t *, const char *, mpd_conte
 
     calc = func(tmp, fmt, ctx);
 
-    if (calc == NULL) {
-        calc = strdup("NULL");
-    }
     /* compare the calculated result to the expected result */
-    compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    if (calc == NULL) {
+        compare_expected("NULL", expected, expstatus, token[0], ctx);
+    }
+    else {
+        compare_expected(calc, expected, expstatus, token[0], ctx);
+        mpd_free(calc);
+    }
     check_equalmem(tmp, op1, token[0]);
 
     /* Allocation failures */
@@ -1071,10 +1164,12 @@ _cp_MpdFmtCtx(char **token, char *(*func)(const mpd_t *, const char *, mpd_conte
         ASSERT(calc == NULL)
     }
     if (calc == NULL) {
-        calc = strdup("NULL");
+        compare_expected("NULL", expected, expstatus, token[0], ctx);
     }
-    compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    else {
+        compare_expected(calc, expected, expstatus, token[0], ctx);
+        mpd_free(calc);
+    }
     check_equalmem(tmp, op1, token[0]);
 
     free(fmt);
@@ -1099,6 +1194,7 @@ _ccp_MpdCtx(char **token, const char *(*func)(const mpd_t *, const mpd_context_t
 
     /* conversion should be done as if there were no limits */
     n = scan_1op_result(op, &expected, token, &maxctx);
+    _TripleTest(op, ctx, token[0]);
 
     /* scan expected conditions */
     expstatus = scan_conditions(token+n);
@@ -1145,6 +1241,7 @@ _Res_Op_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, mpd_context_t *)
     maxctx.traps = MPD_Malloc_error;
 
     n = scan_1op_result(op, &expected, token, &maxctx);
+    _TripleTest(op, ctx, token[0]);
 
     /* scan expected conditions */
     expstatus = scan_conditions(token+n);
@@ -1162,7 +1259,109 @@ _Res_Op_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, mpd_context_t *)
 
     calc = _mpd_to_sci(result, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
+    check_equalmem(tmp, op, token[0]);
+
+    /* Allocation failures */
+    incr = 1;
+    for (alloc_fail = 1; alloc_fail < INT_MAX; alloc_fail += incr) {
+        mpd_init_rand(tmp);
+        mpd_copy(tmp, op, ctx);
+        mpd_minalloc(result);
+        ctx->status = 0;
+
+        mpd_set_alloc_fail(ctx);
+        func(result, tmp, ctx);
+        mpd_set_alloc(ctx);
+
+        if (!(ctx->status&MPD_Malloc_error)) {
+            break;
+        }
+        ASSERT(mpd_isnan(result))
+
+        if (alloc_fail > 100) {
+            incr = (int)(alloc_count*0.02) + 1;
+        }
+    }
+    calc = _mpd_to_sci(result, 1);
+    compare_expected(calc, expected, expstatus, token[0], ctx);
+    mpd_free(calc);
+    check_equalmem(tmp, op, token[0]);
+
+
+    /* result equals operand */
+    mpd_init_rand(tmp);
+    mpd_copy(tmp, op, ctx);
+    ctx->status = 0;
+
+    mpd_set_alloc_count(ctx);
+    func(tmp, tmp, ctx);
+    mpd_set_alloc(ctx);
+
+    calc = _mpd_to_sci(tmp, 1);
+    compare_expected(calc, expected, expstatus, token[0], ctx);
+    mpd_free(calc);
+
+    /* Allocation failures */
+    incr = 1;
+    for (alloc_fail = 1; alloc_fail < INT_MAX; alloc_fail += incr) {
+        mpd_init_rand(tmp);
+        mpd_copy(tmp, op, ctx);
+        ctx->status = 0;
+
+        mpd_set_alloc_fail(ctx);
+        func(tmp, tmp, ctx);
+        mpd_set_alloc(ctx);
+
+        if (!(ctx->status&MPD_Malloc_error)) {
+            break;
+        }
+        ASSERT(mpd_isnan(tmp))
+
+        if (alloc_fail > 100) {
+            incr = (int)(alloc_count*0.02) + 1;
+        }
+    }
+    calc = _mpd_to_sci(tmp, 1);
+    compare_expected(calc, expected, expstatus, token[0], ctx);
+    mpd_free(calc);
+}
+
+/* Test a unary function, quantize the operand before applying the actual function */
+static void
+_Res_Op_CtxWithQuantize(char *token[], void (*func)(mpd_t *, const mpd_t *, mpd_context_t *), mpd_context_t *ctx)
+{
+    mpd_context_t maxctx;
+    char *calc;
+    char *expected;
+    uint32_t expstatus;
+    int n, incr;
+
+    mpd_readcontext(&maxctx);
+    maxctx.traps = MPD_Malloc_error;
+
+    n = scan_2ops_result(op, op1, &expected, token, &maxctx);
+    mpd_quantize(op, op, op1, &maxctx);
+    _TripleTest(op, ctx, token[0]);
+    _TripleTest(op1, ctx, token[0]);
+
+    /* scan expected conditions */
+    expstatus = scan_conditions(token+n);
+
+
+    /* result and tmp are distinct decimals */
+    mpd_init_rand(tmp);
+    mpd_copy(tmp, op, ctx);
+    mpd_init_rand(result);
+    ctx->status = 0;
+
+    mpd_set_alloc_count(ctx);
+    func(result, tmp, ctx);
+    mpd_set_alloc(ctx);
+
+    calc = _mpd_to_sci(result, 1);
+    compare_expected(calc, expected, expstatus, token[0], ctx);
+    mpd_free(calc);
     check_equalmem(tmp, op, token[0]);
 
     /* Allocation failures */
@@ -1188,7 +1387,7 @@ _Res_Op_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, mpd_context_t *)
     }
     calc = _mpd_to_sci(result, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     check_equalmem(tmp, op, token[0]);
 
 
@@ -1203,7 +1402,7 @@ _Res_Op_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, mpd_context_t *)
 
     calc = _mpd_to_sci(tmp, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 
     /* Allocation failures */
     incr = 1;
@@ -1227,12 +1426,29 @@ _Res_Op_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, mpd_context_t *)
     }
     calc = _mpd_to_sci(tmp, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
+}
+
+static void
+resolve_status_hack(uint32_t *expstatus, const uint32_t status)
+{
+    /* hack #1 to resolve disagreement with results generated by decimal.py */
+    if ((*expstatus & MPD_Invalid_operation) &&
+        (status & MPD_Division_impossible)) {
+        *expstatus = MPD_Division_impossible;
+    }
+
+    /* hack #2 to resolve disagreement with results generated by decimal.py */
+    if ((*expstatus & MPD_Invalid_operation) &&
+        (status & MPD_Division_undefined)) {
+        *expstatus = MPD_Division_undefined;
+    }
 }
 
 /* Test a binary function */
 static void
-_Res_Binop_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t *, mpd_context_t *), mpd_context_t *ctx)
+_Res_Binop_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t *, mpd_context_t *),
+               mpd_context_t *ctx)
 {
     mpd_context_t maxctx;
     char *calc;
@@ -1244,10 +1460,11 @@ _Res_Binop_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t *
     maxctx.traps = MPD_Malloc_error;
 
     n = scan_2ops_result(op1, op2, &expected, token, &maxctx);
+    _TripleTest(op1, ctx, token[0]);
+    _TripleTest(op2, ctx, token[0]);
 
     /* scan expected conditions */
     expstatus = scan_conditions(token+n);
-
 
     /* three distinct decimals */
     mpd_init_rand(tmp1);
@@ -1263,7 +1480,7 @@ _Res_Binop_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t *
 
     calc = _mpd_to_sci(result, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     check_equalmem(tmp1, op1, token[0]);
     check_equalmem(tmp2, op2, token[0]);
 
@@ -1292,7 +1509,7 @@ _Res_Binop_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t *
     }
     calc = _mpd_to_sci(result, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     check_equalmem(tmp1, op1, token[0]);
     check_equalmem(tmp2, op2, token[0]);
 
@@ -1310,7 +1527,7 @@ _Res_Binop_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t *
 
     calc = _mpd_to_sci(tmp1, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     check_equalmem(tmp2, op2, token[0]);
 
     /* Allocation failures */
@@ -1337,7 +1554,7 @@ _Res_Binop_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t *
     }
     calc = _mpd_to_sci(tmp1, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     check_equalmem(tmp2, op2, token[0]);
 
 
@@ -1354,7 +1571,7 @@ _Res_Binop_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t *
 
     calc = _mpd_to_sci(tmp2, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     check_equalmem(tmp1, op1, token[0]);
 
     /* Allocation failures */
@@ -1381,13 +1598,14 @@ _Res_Binop_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t *
     }
     calc = _mpd_to_sci(tmp2, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     check_equalmem(tmp1, op1, token[0]);
 }
 
 /* Test a binary function where op1 == op2. */
 static void
-_Res_EqualBinop_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t *, mpd_context_t *), mpd_context_t *ctx)
+_Res_EqualBinop_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t *, mpd_context_t *),
+                    mpd_context_t *ctx)
 {
     mpd_context_t maxctx;
     char *calc;
@@ -1399,6 +1617,7 @@ _Res_EqualBinop_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mp
     maxctx.traps = MPD_Malloc_error;
 
     n = scan_1op_result(op, &expected, token, &maxctx);
+    _TripleTest(op, ctx, token[0]);
 
     /* scan expected conditions */
     expstatus = scan_conditions(token+n);
@@ -1412,23 +1631,9 @@ _Res_EqualBinop_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mp
 
     func(result, tmp, tmp, ctx);
 
-    /* hack #1 to resolve disagreement with results generated by decimal.py */
-    if (expstatus&MPD_Invalid_operation && ctx->status&MPD_Division_impossible) {
-        expstatus = MPD_Division_impossible;
-    }
-    /* hack #2 to resolve disagreement with results generated by decimal.py */
-    if (expstatus&MPD_Invalid_operation && ctx->status&MPD_Division_undefined) {
-        expstatus = MPD_Division_undefined;
-    }
-    /* hack #3 to resolve disagreement with results generated by decimal.py (power) */
-    if ((startswith(expected, "-0E") || startswith(expected, "0E")) && mpd_isnan(result)) {
-        expected = "NaN";
-        expstatus = MPD_Invalid_operation;
-    }
-
     calc = _mpd_to_sci(result, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     check_equalmem(tmp, op, token[0]);
 
     /* Allocation failures */
@@ -1449,7 +1654,7 @@ _Res_EqualBinop_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mp
     }
     calc = _mpd_to_sci(result, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     check_equalmem(tmp, op, token[0]);
 
 
@@ -1462,7 +1667,7 @@ _Res_EqualBinop_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mp
 
     calc = _mpd_to_sci(tmp, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 
     /* Allocation failures */
     for (alloc_fail = 1; alloc_fail < INT_MAX; alloc_fail++) {
@@ -1480,12 +1685,13 @@ _Res_EqualBinop_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mp
     }
     calc = _mpd_to_sci(tmp, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 }
 
 /* Test a binary function with a binary result */
 static void
-_Binres_Binop_Ctx(char *token[], void (*func)(mpd_t *, mpd_t*, const mpd_t *, const mpd_t *, mpd_context_t *), mpd_context_t *ctx)
+_Binres_Binop_Ctx(char *token[], void (*func)(mpd_t *, mpd_t*, const mpd_t *, const mpd_t *, mpd_context_t *),
+                  mpd_context_t *ctx)
 {
     mpd_context_t maxctx;
     char *calc;
@@ -1497,6 +1703,8 @@ _Binres_Binop_Ctx(char *token[], void (*func)(mpd_t *, mpd_t*, const mpd_t *, co
     maxctx.traps = MPD_Malloc_error;
 
     n = scan_2ops_2results(op1, op2, &expected1, &expected2, token, &maxctx);
+    _TripleTest(op1, ctx, token[0]);
+    _TripleTest(op2, ctx, token[0]);
 
     /* scan expected conditions */
     expstatus = scan_conditions(token+n);
@@ -1515,26 +1723,15 @@ _Binres_Binop_Ctx(char *token[], void (*func)(mpd_t *, mpd_t*, const mpd_t *, co
     func(result1, result2, tmp1, tmp2, ctx);
     mpd_set_alloc(ctx);
 
-    /* hack #1 to resolve disagreement with results generated by decimal.py */
-    if (expstatus&MPD_Invalid_operation && ctx->status&MPD_Division_impossible) {
-        expstatus = MPD_Division_impossible;
-    }
-    /* hack #2 to resolve disagreement with results generated by decimal.py */
-    if (expstatus&MPD_Invalid_operation && ctx->status&MPD_Division_undefined) {
-        expstatus = MPD_Division_undefined;
-    }
-    /* hack #3 to resolve disagreement with results generated by decimal.py */
-    if ((startswith(expected1, "-Inf") || startswith(expected1, "Inf")) && mpd_isnan(result1)) {
-        expected1 = "NaN";
-    }
+    resolve_status_hack(&expstatus, ctx->status);
 
     calc = _mpd_to_sci(result1, 1);
     compare_expected(calc, expected1, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 
     calc = _mpd_to_sci(result2, 1);
     compare_expected(calc, expected2, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 
     check_equalmem(tmp1, op1, token[0]);
     check_equalmem(tmp2, op2, token[0]);
@@ -1566,11 +1763,11 @@ _Binres_Binop_Ctx(char *token[], void (*func)(mpd_t *, mpd_t*, const mpd_t *, co
     }
     calc = _mpd_to_sci(result1, 1);
     compare_expected(calc, expected1, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 
     calc = _mpd_to_sci(result2, 1);
     compare_expected(calc, expected2, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 
     check_equalmem(tmp1, op1, token[0]);
     check_equalmem(tmp2, op2, token[0]);
@@ -1590,11 +1787,11 @@ _Binres_Binop_Ctx(char *token[], void (*func)(mpd_t *, mpd_t*, const mpd_t *, co
 
     calc = _mpd_to_sci(tmp1, 1);
     compare_expected(calc, expected1, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 
     calc = _mpd_to_sci(result2, 1);
     compare_expected(calc, expected2, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 
     check_equalmem(tmp2, op2, token[0]);
 
@@ -1624,11 +1821,11 @@ _Binres_Binop_Ctx(char *token[], void (*func)(mpd_t *, mpd_t*, const mpd_t *, co
     }
     calc = _mpd_to_sci(tmp1, 1);
     compare_expected(calc, expected1, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 
     calc = _mpd_to_sci(result2, 1);
     compare_expected(calc, expected2, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 
     check_equalmem(tmp2, op2, token[0]);
 
@@ -1647,11 +1844,11 @@ _Binres_Binop_Ctx(char *token[], void (*func)(mpd_t *, mpd_t*, const mpd_t *, co
 
     calc = _mpd_to_sci(result1, 1);
     compare_expected(calc, expected1, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 
     calc = _mpd_to_sci(tmp1, 1);
     compare_expected(calc, expected2, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 
     check_equalmem(tmp2, op2, token[0]);
 
@@ -1681,11 +1878,11 @@ _Binres_Binop_Ctx(char *token[], void (*func)(mpd_t *, mpd_t*, const mpd_t *, co
     }
     calc = _mpd_to_sci(result1, 1);
     compare_expected(calc, expected1, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 
     calc = _mpd_to_sci(tmp1, 1);
     compare_expected(calc, expected2, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 
     check_equalmem(tmp2, op2, token[0]);
 
@@ -1704,11 +1901,11 @@ _Binres_Binop_Ctx(char *token[], void (*func)(mpd_t *, mpd_t*, const mpd_t *, co
 
     calc = _mpd_to_sci(tmp2, 1);
     compare_expected(calc, expected1, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 
     calc = _mpd_to_sci(result2, 1);
     compare_expected(calc, expected2, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 
     check_equalmem(tmp1, op1, token[0]);
 
@@ -1738,11 +1935,11 @@ _Binres_Binop_Ctx(char *token[], void (*func)(mpd_t *, mpd_t*, const mpd_t *, co
     }
     calc = _mpd_to_sci(tmp2, 1);
     compare_expected(calc, expected1, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 
     calc = _mpd_to_sci(result2, 1);
     compare_expected(calc, expected2, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 
     check_equalmem(tmp1, op1, token[0]);
 
@@ -1761,11 +1958,11 @@ _Binres_Binop_Ctx(char *token[], void (*func)(mpd_t *, mpd_t*, const mpd_t *, co
 
     calc = _mpd_to_sci(result1, 1);
     compare_expected(calc, expected1, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 
     calc = _mpd_to_sci(tmp2, 1);
     compare_expected(calc, expected2, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 
     check_equalmem(tmp1, op1, token[0]);
 
@@ -1795,11 +1992,11 @@ _Binres_Binop_Ctx(char *token[], void (*func)(mpd_t *, mpd_t*, const mpd_t *, co
     }
     calc = _mpd_to_sci(result1, 1);
     compare_expected(calc, expected1, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 
     calc = _mpd_to_sci(tmp2, 1);
     compare_expected(calc, expected2, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 
     check_equalmem(tmp1, op1, token[0]);
 
@@ -1817,11 +2014,11 @@ _Binres_Binop_Ctx(char *token[], void (*func)(mpd_t *, mpd_t*, const mpd_t *, co
 
     calc = _mpd_to_sci(tmp1, 1);
     compare_expected(calc, expected1, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 
     calc = _mpd_to_sci(tmp2, 1);
     compare_expected(calc, expected2, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 
     /* Allocation failures */
     incr = 1;
@@ -1848,11 +2045,11 @@ _Binres_Binop_Ctx(char *token[], void (*func)(mpd_t *, mpd_t*, const mpd_t *, co
     }
     calc = _mpd_to_sci(tmp1, 1);
     compare_expected(calc, expected1, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 
     calc = _mpd_to_sci(tmp2, 1);
     compare_expected(calc, expected2, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 
 
     /* result1 == tmp2, result2 == tmp1 */
@@ -1868,11 +2065,11 @@ _Binres_Binop_Ctx(char *token[], void (*func)(mpd_t *, mpd_t*, const mpd_t *, co
 
     calc = _mpd_to_sci(tmp2, 1);
     compare_expected(calc, expected1, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 
     calc = _mpd_to_sci(tmp1, 1);
     compare_expected(calc, expected2, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 
     /* Allocation failures */
     incr = 1;
@@ -1899,11 +2096,11 @@ _Binres_Binop_Ctx(char *token[], void (*func)(mpd_t *, mpd_t*, const mpd_t *, co
     }
     calc = _mpd_to_sci(tmp2, 1);
     compare_expected(calc, expected1, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 
     calc = _mpd_to_sci(tmp1, 1);
     compare_expected(calc, expected2, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 }
 
 /* Test a binary function with a binary result; equal operands */
@@ -1920,6 +2117,7 @@ _Binres_EqualBinop_Ctx(char *token[], void (*func)(mpd_t *, mpd_t*, const mpd_t 
     maxctx.traps = MPD_Malloc_error;
 
     n = scan_1op_2results(op, &expected1, &expected2, token, &maxctx);
+    _TripleTest(op, ctx, token[0]);
 
     /* scan expected conditions */
     expstatus = scan_conditions(token+n);
@@ -1934,26 +2132,15 @@ _Binres_EqualBinop_Ctx(char *token[], void (*func)(mpd_t *, mpd_t*, const mpd_t 
 
     func(result1, result2, tmp, tmp, ctx);
 
-    /* hack #1 to resolve disagreement with results generated by decimal.py */
-    if (expstatus&MPD_Invalid_operation && ctx->status&MPD_Division_impossible) {
-        expstatus = MPD_Division_impossible;
-    }
-    /* hack #2 to resolve disagreement with results generated by decimal.py */
-    if (expstatus&MPD_Invalid_operation && ctx->status&MPD_Division_undefined) {
-        expstatus = MPD_Division_undefined;
-    }
-    /* hack #3 to resolve disagreement with results generated by decimal.py */
-    if ((startswith(expected1, "-Inf") || startswith(expected1, "Inf")) && mpd_isnan(result1)) {
-        expected1 = "NaN";
-    }
+    resolve_status_hack(&expstatus, ctx->status);
 
     calc = _mpd_to_sci(result1, 1);
     compare_expected(calc, expected1, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 
     calc = _mpd_to_sci(result2, 1);
     compare_expected(calc, expected2, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 
     check_equalmem(tmp, op, token[0]);
 
@@ -1977,11 +2164,11 @@ _Binres_EqualBinop_Ctx(char *token[], void (*func)(mpd_t *, mpd_t*, const mpd_t 
     }
     calc = _mpd_to_sci(result1, 1);
     compare_expected(calc, expected1, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 
     calc = _mpd_to_sci(result2, 1);
     compare_expected(calc, expected2, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 
     check_equalmem(tmp, op, token[0]);
 
@@ -1996,11 +2183,11 @@ _Binres_EqualBinop_Ctx(char *token[], void (*func)(mpd_t *, mpd_t*, const mpd_t 
 
     calc = _mpd_to_sci(tmp, 1);
     compare_expected(calc, expected1, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 
     calc = _mpd_to_sci(result2, 1);
     compare_expected(calc, expected2, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 
     /* Allocation failures */
     for (alloc_fail = 1; alloc_fail < INT_MAX; alloc_fail++) {
@@ -2021,11 +2208,11 @@ _Binres_EqualBinop_Ctx(char *token[], void (*func)(mpd_t *, mpd_t*, const mpd_t 
     }
     calc = _mpd_to_sci(tmp, 1);
     compare_expected(calc, expected1, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 
     calc = _mpd_to_sci(result2, 1);
     compare_expected(calc, expected2, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 
 
     /* result2 == tmp */
@@ -2038,11 +2225,11 @@ _Binres_EqualBinop_Ctx(char *token[], void (*func)(mpd_t *, mpd_t*, const mpd_t 
 
     calc = _mpd_to_sci(result1, 1);
     compare_expected(calc, expected1, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 
     calc = _mpd_to_sci(tmp, 1);
     compare_expected(calc, expected2, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 
     /* Allocation failures */
     for (alloc_fail = 1; alloc_fail < INT_MAX; alloc_fail++) {
@@ -2063,11 +2250,11 @@ _Binres_EqualBinop_Ctx(char *token[], void (*func)(mpd_t *, mpd_t*, const mpd_t 
     }
     calc = _mpd_to_sci(result1, 1);
     compare_expected(calc, expected1, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 
     calc = _mpd_to_sci(tmp, 1);
     compare_expected(calc, expected2, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 }
 
 /* Test a ternary function */
@@ -2084,6 +2271,9 @@ _Res_Ternop_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t 
     maxctx.traps = MPD_Malloc_error;
 
     n = scan_3ops_result(op1, op2, op3, &expected, token, &maxctx);
+    _TripleTest(op1, ctx, token[0]);
+    _TripleTest(op2, ctx, token[0]);
+    _TripleTest(op3, ctx, token[0]);
 
     /* scan expected conditions */
     expstatus = scan_conditions(token+n);
@@ -2105,7 +2295,7 @@ _Res_Ternop_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t 
 
     calc = _mpd_to_sci(result, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     check_equalmem(tmp1, op1, token[0]);
     check_equalmem(tmp2, op2, token[0]);
     check_equalmem(tmp3, op3, token[0]);
@@ -2137,7 +2327,7 @@ _Res_Ternop_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t 
     }
     calc = _mpd_to_sci(result, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     check_equalmem(tmp1, op1, token[0]);
     check_equalmem(tmp2, op2, token[0]);
     check_equalmem(tmp3, op3, token[0]);
@@ -2158,7 +2348,7 @@ _Res_Ternop_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t 
 
     calc = _mpd_to_sci(tmp1, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     check_equalmem(tmp2, op2, token[0]);
     check_equalmem(tmp3, op3, token[0]);
 
@@ -2188,7 +2378,7 @@ _Res_Ternop_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t 
     }
     calc = _mpd_to_sci(tmp1, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     check_equalmem(tmp2, op2, token[0]);
     check_equalmem(tmp3, op3, token[0]);
 
@@ -2208,7 +2398,7 @@ _Res_Ternop_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t 
 
     calc = _mpd_to_sci(tmp2, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     check_equalmem(tmp1, op1, token[0]);
     check_equalmem(tmp3, op3, token[0]);
 
@@ -2238,7 +2428,7 @@ _Res_Ternop_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t 
     }
     calc = _mpd_to_sci(tmp2, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     check_equalmem(tmp1, op1, token[0]);
     check_equalmem(tmp3, op3, token[0]);
 
@@ -2258,7 +2448,7 @@ _Res_Ternop_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t 
 
     calc = _mpd_to_sci(tmp3, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     check_equalmem(tmp1, op1, token[0]);
     check_equalmem(tmp2, op2, token[0]);
 
@@ -2288,7 +2478,7 @@ _Res_Ternop_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t 
     }
     calc = _mpd_to_sci(tmp3, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     check_equalmem(tmp1, op1, token[0]);
     check_equalmem(tmp2, op2, token[0]);
 }
@@ -2307,6 +2497,8 @@ _Res_EqEqOp_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t 
     maxctx.traps = MPD_Malloc_error;
 
     n = scan_2ops_result(op1, op2, &expected, token, &maxctx);
+    _TripleTest(op1, ctx, token[0]);
+    _TripleTest(op2, ctx, token[0]);
 
     /* scan expected conditions */
     expstatus = scan_conditions(token+n);
@@ -2324,7 +2516,7 @@ _Res_EqEqOp_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t 
 
     calc = _mpd_to_sci(result, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     check_equalmem(tmp1, op1, token[0]);
     check_equalmem(tmp2, op2, token[0]);
 
@@ -2348,7 +2540,7 @@ _Res_EqEqOp_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t 
     }
     calc = _mpd_to_sci(result, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     check_equalmem(tmp1, op1, token[0]);
     check_equalmem(tmp2, op2, token[0]);
 
@@ -2364,7 +2556,7 @@ _Res_EqEqOp_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t 
 
     calc = _mpd_to_sci(tmp1, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     check_equalmem(tmp2, op2, token[0]);
 
     /* Allocation failures */
@@ -2386,7 +2578,7 @@ _Res_EqEqOp_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t 
     }
     calc = _mpd_to_sci(tmp1, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     check_equalmem(tmp2, op2, token[0]);
 
 
@@ -2401,7 +2593,7 @@ _Res_EqEqOp_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t 
 
     calc = _mpd_to_sci(tmp2, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     check_equalmem(tmp1, op1, token[0]);
 
     /* Allocation failures */
@@ -2423,7 +2615,7 @@ _Res_EqEqOp_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t 
     }
     calc = _mpd_to_sci(tmp2, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     check_equalmem(tmp1, op1, token[0]);
 }
 
@@ -2441,6 +2633,8 @@ _Res_EqOpEq_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t 
     maxctx.traps = MPD_Malloc_error;
 
     n = scan_2ops_result(op1, op2, &expected, token, &maxctx);
+    _TripleTest(op1, ctx, token[0]);
+    _TripleTest(op2, ctx, token[0]);
 
     /* scan expected conditions */
     expstatus = scan_conditions(token+n);
@@ -2458,7 +2652,7 @@ _Res_EqOpEq_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t 
 
     calc = _mpd_to_sci(result, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     check_equalmem(tmp1, op1, token[0]);
     check_equalmem(tmp2, op2, token[0]);
 
@@ -2482,7 +2676,7 @@ _Res_EqOpEq_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t 
     }
     calc = _mpd_to_sci(result, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     check_equalmem(tmp1, op1, token[0]);
     check_equalmem(tmp2, op2, token[0]);
 
@@ -2498,7 +2692,7 @@ _Res_EqOpEq_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t 
 
     calc = _mpd_to_sci(tmp1, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     check_equalmem(tmp2, op2, token[0]);
 
     /* Allocation failures */
@@ -2520,7 +2714,7 @@ _Res_EqOpEq_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t 
     }
     calc = _mpd_to_sci(tmp1, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     check_equalmem(tmp2, op2, token[0]);
 
 
@@ -2535,7 +2729,7 @@ _Res_EqOpEq_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t 
 
     calc = _mpd_to_sci(tmp2, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     check_equalmem(tmp1, op1, token[0]);
 
     /* Allocation failures */
@@ -2557,7 +2751,7 @@ _Res_EqOpEq_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t 
     }
     calc = _mpd_to_sci(tmp2, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     check_equalmem(tmp1, op1, token[0]);
 }
 
@@ -2575,6 +2769,8 @@ _Res_OpEqEq_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t 
     maxctx.traps = MPD_Malloc_error;
 
     n = scan_2ops_result(op1, op2, &expected, token, &maxctx);
+    _TripleTest(op1, ctx, token[0]);
+    _TripleTest(op2, ctx, token[0]);
 
     /* scan expected conditions */
     expstatus = scan_conditions(token+n);
@@ -2588,11 +2784,11 @@ _Res_OpEqEq_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t 
     mpd_init_rand(result);
     ctx->status = 0;
 
-    func(result, tmp2, tmp1, tmp1, ctx);
+    func(result, tmp1, tmp2, tmp2, ctx);
 
     calc = _mpd_to_sci(result, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     check_equalmem(tmp1, op1, token[0]);
     check_equalmem(tmp2, op2, token[0]);
 
@@ -2606,7 +2802,7 @@ _Res_OpEqEq_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t 
         ctx->status = 0;
 
         mpd_set_alloc_fail(ctx);
-        func(result, tmp2, tmp1, tmp1, ctx);
+        func(result, tmp1, tmp2, tmp2, ctx);
         mpd_set_alloc(ctx);
 
         if (!(ctx->status&MPD_Malloc_error)) {
@@ -2616,45 +2812,8 @@ _Res_OpEqEq_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t 
     }
     calc = _mpd_to_sci(result, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     check_equalmem(tmp1, op1, token[0]);
-    check_equalmem(tmp2, op2, token[0]);
-
-
-    /* result == tmp1 */
-    mpd_init_rand(tmp1);
-    mpd_init_rand(tmp2);
-    mpd_copy(tmp1, op1, ctx);
-    mpd_copy(tmp2, op2, ctx);
-    ctx->status = 0;
-
-    func(tmp1, tmp2, tmp1, tmp1, ctx);
-
-    calc = _mpd_to_sci(tmp1, 1);
-    compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
-    check_equalmem(tmp2, op2, token[0]);
-
-    /* Allocation failures */
-    for (alloc_fail = 1; alloc_fail < INT_MAX; alloc_fail++) {
-        mpd_init_rand(tmp1);
-        mpd_init_rand(tmp2);
-        mpd_copy(tmp1, op1, ctx);
-        mpd_copy(tmp2, op2, ctx);
-        ctx->status = 0;
-
-        mpd_set_alloc_fail(ctx);
-        func(tmp1, tmp2, tmp1, tmp1, ctx);
-        mpd_set_alloc(ctx);
-
-        if (!(ctx->status&MPD_Malloc_error)) {
-            break;
-        }
-        ASSERT(mpd_isnan(tmp1))
-    }
-    calc = _mpd_to_sci(tmp1, 1);
-    compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
     check_equalmem(tmp2, op2, token[0]);
 
 
@@ -2665,11 +2824,11 @@ _Res_OpEqEq_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t 
     mpd_copy(tmp2, op2, ctx);
     ctx->status = 0;
 
-    func(tmp2, tmp2, tmp1, tmp1, ctx);
+    func(tmp2, tmp1, tmp2, tmp2, ctx);
 
     calc = _mpd_to_sci(tmp2, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     check_equalmem(tmp1, op1, token[0]);
 
     /* Allocation failures */
@@ -2681,7 +2840,7 @@ _Res_OpEqEq_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t 
         ctx->status = 0;
 
         mpd_set_alloc_fail(ctx);
-        func(tmp2, tmp2, tmp1, tmp1, ctx);
+        func(tmp2, tmp1, tmp2, tmp2, ctx);
         mpd_set_alloc(ctx);
 
         if (!(ctx->status&MPD_Malloc_error)) {
@@ -2691,8 +2850,45 @@ _Res_OpEqEq_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t 
     }
     calc = _mpd_to_sci(tmp2, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     check_equalmem(tmp1, op1, token[0]);
+
+
+    /* result == tmp1 */
+    mpd_init_rand(tmp1);
+    mpd_init_rand(tmp2);
+    mpd_copy(tmp1, op1, ctx);
+    mpd_copy(tmp2, op2, ctx);
+    ctx->status = 0;
+
+    func(tmp1, tmp1, tmp2, tmp2, ctx);
+
+    calc = _mpd_to_sci(tmp1, 1);
+    compare_expected(calc, expected, expstatus, token[0], ctx);
+    mpd_free(calc);
+    check_equalmem(tmp2, op2, token[0]);
+
+    /* Allocation failures */
+    for (alloc_fail = 1; alloc_fail < INT_MAX; alloc_fail++) {
+        mpd_init_rand(tmp1);
+        mpd_init_rand(tmp2);
+        mpd_copy(tmp1, op1, ctx);
+        mpd_copy(tmp2, op2, ctx);
+        ctx->status = 0;
+
+        mpd_set_alloc_fail(ctx);
+        func(tmp1, tmp1, tmp2, tmp2, ctx);
+        mpd_set_alloc(ctx);
+
+        if (!(ctx->status&MPD_Malloc_error)) {
+            break;
+        }
+        ASSERT(mpd_isnan(tmp1))
+    }
+    calc = _mpd_to_sci(tmp1, 1);
+    compare_expected(calc, expected, expstatus, token[0], ctx);
+    mpd_free(calc);
+    check_equalmem(tmp2, op2, token[0]);
 }
 
 /* Test a ternary function, first, second and third operand equal */
@@ -2709,6 +2905,7 @@ _Res_EqEqEq_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t 
     maxctx.traps = MPD_Malloc_error;
 
     n = scan_1op_result(op, &expected, token, &maxctx);
+    _TripleTest(op, ctx, token[0]);
 
     /* scan expected conditions */
     expstatus = scan_conditions(token+n);
@@ -2724,7 +2921,7 @@ _Res_EqEqEq_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t 
 
     calc = _mpd_to_sci(result, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     check_equalmem(tmp, op, token[0]);
 
     /* Allocation failures */
@@ -2745,7 +2942,7 @@ _Res_EqEqEq_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t 
     }
     calc = _mpd_to_sci(result, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     check_equalmem(tmp, op, token[0]);
 
 
@@ -2758,7 +2955,7 @@ _Res_EqEqEq_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t 
 
     calc = _mpd_to_sci(tmp, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 
     /* Allocation failures */
     for (alloc_fail = 1; alloc_fail < INT_MAX; alloc_fail++) {
@@ -2777,7 +2974,7 @@ _Res_EqEqEq_Ctx(char *token[], void (*func)(mpd_t *, const mpd_t *, const mpd_t 
     }
     calc = _mpd_to_sci(tmp, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 }
 
 /*
@@ -2799,6 +2996,8 @@ _Int_Res_Binop_Ctx(char *token[], int (*func)(mpd_t *, const mpd_t *, const mpd_
     maxctx.traps = MPD_Malloc_error;
 
     n = scan_2ops_result(op1, op2, &expected, token, &maxctx);
+    _TripleTest(op1, ctx, token[0]);
+    _TripleTest(op2, ctx, token[0]);
 
     /* scan expected conditions */
     expstatus = scan_conditions(token+n);
@@ -2816,7 +3015,7 @@ _Int_Res_Binop_Ctx(char *token[], int (*func)(mpd_t *, const mpd_t *, const mpd_
 
     calc = _mpd_to_sci(result, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     snprintf(buf, 11, "%d", int_result);
     if (int_result != INT_MAX) { /* NaN cases are skipped for the int_retval */
         compare_expected(buf, expected, expstatus, token[0], ctx);
@@ -2844,7 +3043,7 @@ _Int_Res_Binop_Ctx(char *token[], int (*func)(mpd_t *, const mpd_t *, const mpd_
     }
     calc = _mpd_to_sci(result, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     snprintf(buf, 11, "%d", int_result);
     if (int_result != INT_MAX) { /* NaN cases are skipped for the int_retval */
         compare_expected(buf, expected, expstatus, token[0], ctx);
@@ -2864,7 +3063,7 @@ _Int_Res_Binop_Ctx(char *token[], int (*func)(mpd_t *, const mpd_t *, const mpd_
 
     calc = _mpd_to_sci(tmp1, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     snprintf(buf, 11, "%d", int_result);
     if (int_result != INT_MAX) { /* NaN cases are skipped for the int_retval */
         compare_expected(buf, expected, expstatus, token[0], ctx);
@@ -2890,7 +3089,7 @@ _Int_Res_Binop_Ctx(char *token[], int (*func)(mpd_t *, const mpd_t *, const mpd_
     }
     calc = _mpd_to_sci(tmp1, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     snprintf(buf, 11, "%d", int_result);
     if (int_result != INT_MAX) { /* NaN cases are skipped for the int_retval */
         compare_expected(buf, expected, expstatus, token[0], ctx);
@@ -2910,7 +3109,7 @@ _Int_Res_Binop_Ctx(char *token[], int (*func)(mpd_t *, const mpd_t *, const mpd_
 
     calc = _mpd_to_sci(tmp2, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     snprintf(buf, 11, "%d", int_result);
     if (int_result != INT_MAX) { /* NaN cases are skipped for the int_retval */
         compare_expected(buf, expected, expstatus, token[0], ctx);
@@ -2936,7 +3135,7 @@ _Int_Res_Binop_Ctx(char *token[], int (*func)(mpd_t *, const mpd_t *, const mpd_
     }
     calc = _mpd_to_sci(tmp2, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     snprintf(buf, 11, "%d", int_result);
     if (int_result != INT_MAX) { /* NaN cases are skipped for the int_retval */
         compare_expected(buf, expected, expstatus, token[0], ctx);
@@ -2964,6 +3163,7 @@ _Int_Res_EqualBinop_Ctx(char *token[], int (*func)(mpd_t *, const mpd_t *, const
     maxctx.traps = MPD_Malloc_error;
 
     n = scan_1op_result(op, &expected, token, &maxctx);
+    _TripleTest(op, ctx, token[0]);
 
     /* scan expected conditions */
     expstatus = scan_conditions(token+n);
@@ -2979,7 +3179,7 @@ _Int_Res_EqualBinop_Ctx(char *token[], int (*func)(mpd_t *, const mpd_t *, const
 
     calc = _mpd_to_sci(result, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     snprintf(buf, 11, "%d", int_result);
     if (int_result != INT_MAX) { /* NaN cases are skipped for the int_retval */
         compare_expected(buf, expected, expstatus, token[0], ctx);
@@ -3004,7 +3204,7 @@ _Int_Res_EqualBinop_Ctx(char *token[], int (*func)(mpd_t *, const mpd_t *, const
     }
     calc = _mpd_to_sci(result, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     snprintf(buf, 11, "%d", int_result);
     if (int_result != INT_MAX) { /* NaN cases are skipped for the int_retval */
         compare_expected(buf, expected, expstatus, token[0], ctx);
@@ -3021,7 +3221,7 @@ _Int_Res_EqualBinop_Ctx(char *token[], int (*func)(mpd_t *, const mpd_t *, const
 
     calc = _mpd_to_sci(tmp, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     snprintf(buf, 11, "%d", int_result);
     if (int_result != INT_MAX) { /* NaN cases are skipped for the int_retval */
         compare_expected(buf, expected, expstatus, token[0], ctx);
@@ -3044,7 +3244,7 @@ _Int_Res_EqualBinop_Ctx(char *token[], int (*func)(mpd_t *, const mpd_t *, const
     }
     calc = _mpd_to_sci(tmp, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     snprintf(buf, 11, "%d", int_result);
     if (int_result != INT_MAX) { /* NaN cases are skipped for the int_retval */
         compare_expected(buf, expected, expstatus, token[0], ctx);
@@ -3071,6 +3271,8 @@ _Int_Res_Binop(char *token[], int (*func)(mpd_t *, const mpd_t *, const mpd_t *)
     maxctx.traps = MPD_Malloc_error;
 
     n = scan_2ops_result(op1, op2, &expected, token, &maxctx);
+    _TripleTest(op1, ctx, token[0]);
+    _TripleTest(op2, ctx, token[0]);
 
     /* scan expected conditions */
     expstatus = scan_conditions(token+n);
@@ -3088,7 +3290,7 @@ _Int_Res_Binop(char *token[], int (*func)(mpd_t *, const mpd_t *, const mpd_t *)
 
     calc = _mpd_to_sci(result, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     snprintf(buf, 11, "%d", int_result);
     if (int_result != INT_MAX) { /* NaN cases are skipped for the int_retval */
         compare_expected(buf, expected, expstatus, token[0], ctx);
@@ -3116,7 +3318,7 @@ _Int_Res_Binop(char *token[], int (*func)(mpd_t *, const mpd_t *, const mpd_t *)
     }
     calc = _mpd_to_sci(result, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     snprintf(buf, 11, "%d", int_result);
     if (int_result != INT_MAX) { /* NaN cases are skipped for the int_retval */
         compare_expected(buf, expected, expstatus, token[0], ctx);
@@ -3136,7 +3338,7 @@ _Int_Res_Binop(char *token[], int (*func)(mpd_t *, const mpd_t *, const mpd_t *)
 
     calc = _mpd_to_sci(tmp1, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     snprintf(buf, 11, "%d", int_result);
     if (int_result != INT_MAX) { /* NaN cases are skipped for the int_retval */
         compare_expected(buf, expected, expstatus, token[0], ctx);
@@ -3162,7 +3364,7 @@ _Int_Res_Binop(char *token[], int (*func)(mpd_t *, const mpd_t *, const mpd_t *)
     }
     calc = _mpd_to_sci(tmp1, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     snprintf(buf, 11, "%d", int_result);
     if (int_result != INT_MAX) { /* NaN cases are skipped for the int_retval */
         compare_expected(buf, expected, expstatus, token[0], ctx);
@@ -3181,7 +3383,7 @@ _Int_Res_Binop(char *token[], int (*func)(mpd_t *, const mpd_t *, const mpd_t *)
 
     calc = _mpd_to_sci(tmp2, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     snprintf(buf, 11, "%d", int_result);
     if (int_result != INT_MAX) { /* NaN cases are skipped for the int_retval */
         compare_expected(buf, expected, expstatus, token[0], ctx);
@@ -3207,7 +3409,7 @@ _Int_Res_Binop(char *token[], int (*func)(mpd_t *, const mpd_t *, const mpd_t *)
     }
     calc = _mpd_to_sci(tmp2, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     snprintf(buf, 11, "%d", int_result);
     if (int_result != INT_MAX) { /* NaN cases are skipped for the int_retval */
         compare_expected(buf, expected, expstatus, token[0], ctx);
@@ -3236,6 +3438,7 @@ _Int_Res_EqualBinop(char *token[], int (*func)(mpd_t *, const mpd_t *, const mpd
     maxctx.traps = MPD_Malloc_error;
 
     n = scan_1op_result(op, &expected, token, &maxctx);
+    _TripleTest(op, ctx, token[0]);
 
     /* scan expected conditions */
     expstatus = scan_conditions(token+n);
@@ -3251,7 +3454,7 @@ _Int_Res_EqualBinop(char *token[], int (*func)(mpd_t *, const mpd_t *, const mpd
 
     calc = _mpd_to_sci(result, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     snprintf(buf, 11, "%d", int_result);
     if (int_result != INT_MAX) { /* NaN cases are skipped for the int_retval */
         compare_expected(buf, expected, expstatus, token[0], ctx);
@@ -3276,7 +3479,7 @@ _Int_Res_EqualBinop(char *token[], int (*func)(mpd_t *, const mpd_t *, const mpd
     }
     calc = _mpd_to_sci(result, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     snprintf(buf, 11, "%d", int_result);
     if (int_result != INT_MAX) { /* NaN cases are skipped for the int_retval */
         compare_expected(buf, expected, expstatus, token[0], ctx);
@@ -3293,7 +3496,7 @@ _Int_Res_EqualBinop(char *token[], int (*func)(mpd_t *, const mpd_t *, const mpd
 
     calc = _mpd_to_sci(tmp, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     snprintf(buf, 11, "%d", int_result);
     if (int_result != INT_MAX) { /* NaN cases are skipped for the int_retval */
         compare_expected(buf, expected, expstatus, token[0], ctx);
@@ -3316,7 +3519,7 @@ _Int_Res_EqualBinop(char *token[], int (*func)(mpd_t *, const mpd_t *, const mpd
     }
     calc = _mpd_to_sci(tmp, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     snprintf(buf, 11, "%d", int_result);
     if (int_result != INT_MAX) { /* NaN cases are skipped for the int_retval */
         compare_expected(buf, expected, expstatus, token[0], ctx);
@@ -3342,6 +3545,8 @@ _Int_Binop_Ctx(int skip, char *token[], int (*func)(const mpd_t *, const mpd_t *
     maxctx.traps = MPD_Malloc_error;
 
     n = scan_2ops_result(op1, op2, &expected, token, &maxctx);
+    _TripleTest(op1, ctx, token[0]);
+    _TripleTest(op2, ctx, token[0]);
 
     /* scan expected conditions */
     expstatus = scan_conditions(token+n);
@@ -3407,6 +3612,7 @@ _Int_EqualBinop_Ctx(int skip, char *token[], int (*func)(const mpd_t *, const mp
     maxctx.traps = MPD_Malloc_error;
 
     n = scan_1op_result(op, &expected, token, &maxctx);
+    _TripleTest(op, ctx, token[0]);
 
     /* scan expected conditions */
     expstatus = scan_conditions(token+n);
@@ -3465,6 +3671,8 @@ _Int_Binop(char *token[], int (*func)(const mpd_t *, const mpd_t *), mpd_context
     maxctx.traps = MPD_Malloc_error;
 
     n = scan_2ops_result(op1, op2, &expected, token, &maxctx);
+    _TripleTest(op1, ctx, token[0]);
+    _TripleTest(op2, ctx, token[0]);
 
     /* scan expected conditions */
     expstatus = scan_conditions(token+n);
@@ -3525,6 +3733,7 @@ _Int_EqualBinop(char *token[], int (*func)(const mpd_t *, const mpd_t *), mpd_co
     maxctx.traps = MPD_Malloc_error;
 
     n = scan_1op_result(op, &expected, token, &maxctx);
+    _TripleTest(op, ctx, token[0]);
 
     /* scan expected conditions */
     expstatus = scan_conditions(token+n);
@@ -3568,13 +3777,19 @@ scan_ssize(char *token[])
         errno = 1;
         return MPD_SSIZE_MAX;
     }
-    return mpd_strtossize(token[1], NULL, 10);
+    return strtossize(token[1], NULL, 10);
 }
 
 /*
  * Test a function with an mpd_t and an mpd_ssize_t operand.
  * Used for the shift functions.
  */
+static void
+_mpd_shiftr(mpd_t *res, const mpd_t *a, mpd_ssize_t n, mpd_context_t *ctx)
+{
+    (void)mpd_shiftr(res, a, n, ctx);
+}
+
 static void
 _Res_Op_Lsize_Ctx(int skip, char *token[], void (*func)(mpd_t *, const mpd_t *, mpd_ssize_t, mpd_context_t *), mpd_context_t *ctx)
 {
@@ -3589,6 +3804,8 @@ _Res_Op_Lsize_Ctx(int skip, char *token[], void (*func)(mpd_t *, const mpd_t *, 
     maxctx.traps = MPD_Malloc_error;
 
     n = scan_2ops_result(op1, op2, &expected, token, &maxctx);
+    _TripleTest(op1, ctx, token[0]);
+    _TripleTest(op2, ctx, token[0]);
 
     /* scan expected conditions */
     expstatus = scan_conditions(token+n);
@@ -3614,7 +3831,7 @@ _Res_Op_Lsize_Ctx(int skip, char *token[], void (*func)(mpd_t *, const mpd_t *, 
 
     calc = _mpd_to_sci(result, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     check_equalmem(tmp1, op1, token[0]);
 
     /* Allocation failures */
@@ -3635,7 +3852,7 @@ _Res_Op_Lsize_Ctx(int skip, char *token[], void (*func)(mpd_t *, const mpd_t *, 
     }
     calc = _mpd_to_sci(result, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
     check_equalmem(tmp1, op1, token[0]);
 
 
@@ -3648,7 +3865,7 @@ _Res_Op_Lsize_Ctx(int skip, char *token[], void (*func)(mpd_t *, const mpd_t *, 
 
     calc = _mpd_to_sci(tmp1, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 
     /* Allocation failures */
     for (alloc_fail = 1; alloc_fail < INT_MAX; alloc_fail++) {
@@ -3667,7 +3884,7 @@ _Res_Op_Lsize_Ctx(int skip, char *token[], void (*func)(mpd_t *, const mpd_t *, 
     }
     calc = _mpd_to_sci(tmp1, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 }
 
 /* test mpd_qln10() */
@@ -3685,6 +3902,7 @@ _test_mpd_qln10(int skip, char *token[], mpd_context_t *ctx)
     maxctx.traps = MPD_Malloc_error;
 
     n = scan_1op_result(op1, &expected, token, &maxctx);
+    _TripleTest(op1, ctx, token[0]);
 
     /* scan expected conditions */
     expstatus = scan_conditions(token+n);
@@ -3707,7 +3925,7 @@ _test_mpd_qln10(int skip, char *token[], mpd_context_t *ctx)
 
     calc = _mpd_to_sci(result, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 
     /* Allocation failures */
     for (alloc_fail = 1; alloc_fail < INT_MAX; alloc_fail++) {
@@ -3725,7 +3943,7 @@ _test_mpd_qln10(int skip, char *token[], mpd_context_t *ctx)
     }
     calc = _mpd_to_sci(result, 1);
     compare_expected(calc, expected, expstatus, token[0], ctx);
-    free(calc);
+    mpd_free(calc);
 }
 
 static void
@@ -3748,6 +3966,7 @@ _Baseconv(char *token[], mpd_context_t *ctx)
 
     n = scan_1op_result(op1, &expected, token, &maxctx);
     ASSERT(mpd_isinteger(op1))
+    _TripleTest(op1, ctx, token[0]);
 
     /* scan expected conditions */
     expstatus = scan_conditions(token+n);
@@ -3915,7 +4134,7 @@ _Baseconv(char *token[], mpd_context_t *ctx)
     iter = 16;
     for (i = 2; i <= iter; i++) {
 
-        base = i;
+        base = (uint32_t)i;
         len16 = mpd_sizeinbase(op1, base);
         data16 = mpd_alloc((mpd_size_t)len16, sizeof *data16);
         len16 = mpd_export_u16(&data16, len16, base, op1, ctx);
@@ -4234,7 +4453,7 @@ _Baseconv(char *token[], mpd_context_t *ctx)
 
     for (i = 2; i <= 16; i++) {
 
-        base = i;
+        base = (uint32_t)i;
         len32 = mpd_sizeinbase(op1, base);
         data32 = mpd_alloc((mpd_size_t)len32, sizeof *data32);
         expected_len32 = mpd_export_u32(&data32, len32, base, op1, ctx);
@@ -4345,6 +4564,7 @@ _Baseconv(char *token[], mpd_context_t *ctx)
  *   - mpd_abs_uint (64 bit)
  *   - mpd_get_u64
  */
+#ifndef MPD_LEGACY_COMPILER
 static void
 _u64_MpdCtx(char **token, uint64_t (*func)(const mpd_t *, mpd_context_t *), mpd_context_t *ctx)
 {
@@ -4360,6 +4580,7 @@ _u64_MpdCtx(char **token, uint64_t (*func)(const mpd_t *, mpd_context_t *), mpd_
 
     /* conversion should be done as if there were no limits */
     n = scan_1op_result(op, &expected, token, &maxctx);
+    _TripleTest(op, ctx, token[0]);
 
     expstatus = scan_conditions(token+n);
 
@@ -4374,6 +4595,7 @@ _u64_MpdCtx(char **token, uint64_t (*func)(const mpd_t *, mpd_context_t *), mpd_
     compare_expected(calc, expected, expstatus, token[0], ctx);
     check_equalmem(tmp, op, token[0]);
 }
+#endif
 
 /*
  * Test a function returning a uint64_t, accepting:
@@ -4399,6 +4621,7 @@ _u32_MpdCtx(char **token, uint32_t (*func)(const mpd_t *, mpd_context_t *), mpd_
 
     /* conversion should be done as if there were no limits */
     n = scan_1op_result(op, &expected, token, &maxctx);
+    _TripleTest(op, ctx, token[0]);
 
     expstatus = scan_conditions(token+n);
 
@@ -4423,7 +4646,7 @@ _u32_MpdCtx(char **token, uint32_t (*func)(const mpd_t *, mpd_context_t *), mpd_
  *   - mpd_get_i64
  *   - mpd_get_i32
  */
-#ifndef LEGACY_COMPILER
+#ifndef MPD_LEGACY_COMPILER
 static void
 _i64_MpdCtx(char **token, int64_t (*func)(const mpd_t *, mpd_context_t *), mpd_context_t *ctx)
 {
@@ -4439,6 +4662,7 @@ _i64_MpdCtx(char **token, int64_t (*func)(const mpd_t *, mpd_context_t *), mpd_c
 
     /* conversion should be done as if there were no limits */
     n = scan_1op_result(op, &expected, token, &maxctx);
+    _TripleTest(op, ctx, token[0]);
 
     expstatus = scan_conditions(token+n);
 
@@ -4480,6 +4704,7 @@ _i32_MpdCtx(char **token, int32_t (*func)(const mpd_t *, mpd_context_t *), mpd_c
 
     /* conversion should be done as if there were no limits */
     n = scan_1op_result(op, &expected, token, &maxctx);
+    _TripleTest(op, ctx, token[0]);
 
     expstatus = scan_conditions(token+n);
 
@@ -4495,10 +4720,80 @@ _i32_MpdCtx(char **token, int32_t (*func)(const mpd_t *, mpd_context_t *), mpd_c
     check_equalmem(tmp, op, token[0]);
 }
 
+static void
+triple_cov(void)
+{
+    mpd_uint128_triple_t triple = { MPD_TRIPLE_QNAN, 2, 0, 0, 0 };
+    uint32_t status = 0;
+
+    mpd_from_uint128_triple(op, &triple, &status);
+    ASSERT(status == MPD_Conversion_syntax)
+    ASSERT(mpd_isqnan(op))
+
+    triple.sign = 0;
+    triple.exp = 1;
+    status = 0;
+    mpd_from_uint128_triple(op, &triple, &status);
+    ASSERT(status == MPD_Conversion_syntax)
+    ASSERT(mpd_isqnan(op))
+
+    triple.tag = MPD_TRIPLE_INF;
+    status = 0;
+    mpd_from_uint128_triple(op, &triple, &status);
+    ASSERT(status == MPD_Conversion_syntax)
+    ASSERT(mpd_isqnan(op))
+
+    triple.tag = MPD_TRIPLE_NORMAL;
+    triple.sign = 2;
+    status = 0;
+    mpd_from_uint128_triple(op, &triple, &status);
+    ASSERT(status == MPD_Conversion_syntax)
+    ASSERT(mpd_isqnan(op))
+
+    triple.tag = MPD_TRIPLE_NORMAL;
+    triple.sign = 0;
+    triple.exp = INT64_MAX;
+    status = 0;
+    mpd_from_uint128_triple(op, &triple, &status);
+    ASSERT(status == MPD_Conversion_syntax)
+    ASSERT(mpd_isqnan(op))
+
+    triple.tag = MPD_TRIPLE_NORMAL;
+    triple.sign = 0;
+    triple.exp = INT64_MIN;
+    status = 0;
+    mpd_from_uint128_triple(op, &triple, &status);
+    ASSERT(status == MPD_Conversion_syntax)
+    ASSERT(mpd_isqnan(op))
+
+    triple.tag = MPD_TRIPLE_NORMAL;
+    triple.sign = 0;
+    triple.exp = MPD_SSIZE_MAX;
+    status = 0;
+    mpd_from_uint128_triple(op, &triple, &status);
+    ASSERT(status == MPD_Conversion_syntax)
+    ASSERT(mpd_isqnan(op))
+
+    triple.tag = MPD_TRIPLE_NORMAL;
+    triple.sign = 0;
+    triple.exp = MPD_SSIZE_MIN;
+    status = 0;
+    mpd_from_uint128_triple(op, &triple, &status);
+    ASSERT(status == MPD_Conversion_syntax)
+    ASSERT(mpd_isqnan(op))
+
+    triple.tag = (enum mpd_triple_class)10;
+    triple.sign = 0;
+    status = 0;
+    mpd_from_uint128_triple(op, &triple, &status);
+    ASSERT(status == MPD_Conversion_syntax)
+    ASSERT(mpd_isqnan(op))
+}
+
 
 /* process a file */
 static void
-doit(char *filename)
+doit(const char *filename)
 {
     FILE *file;
     mpd_context_t ctx;
@@ -4539,6 +4834,11 @@ doit(char *filename)
 
         /* split a line into tokens */
         strcpy(tmpline, line);
+
+        for (int i =0; i < MAXTOKEN+1; i++) {
+            token[i] = NULL;
+        }
+
         if (split(token, tmpline) == 0) {
             goto cleanup;
         }
@@ -4559,14 +4859,15 @@ doit(char *filename)
 
         /* directives */
         if (startswith(token[0], "Precision")) {
-            l = scan_ssize(token);
-            if (errno != 0) {
-                mpd_err_fatal("%s: %s", filename, line);
+            if (strcmp(token[1], "MAX_PREC") == 0) {
+                l = MPD_MAX_PREC;
             }
-            /*if (!mpd_qsetprec(&ctx, l)) {
-                mpd_err_fatal("%s: %s", filename, line);
-            }*/
-            /* use a wider range than officially allowed */
+            else {
+                l = scan_ssize(token);
+                if (errno != 0) {
+                    mpd_err_fatal("%s: %s", filename, line);
+                }
+            }
             ctx.prec = l;
             goto cleanup;
         }
@@ -4594,27 +4895,29 @@ doit(char *filename)
         }
 
         if (startswith(token[0], "MaxExponent")) {
-            l = scan_ssize(token);
-            if (errno != 0) {
-                mpd_err_fatal("%s: %s", filename, line);
+            if (strcmp(token[1], "MAX_EMAX") == 0) {
+                l = MPD_MAX_EMAX;
             }
-            /*if (!mpd_qsetemax(&ctx, l)) {
-                mpd_err_fatal("%s: %s", filename, line);
-            }*/
-            /* use a wider range than officially allowed */
+            else {
+                l = scan_ssize(token);
+                if (errno != 0) {
+                    mpd_err_fatal("%s: %s", filename, line);
+                }
+            }
             ctx.emax = l;
             goto cleanup;
         }
 
         if (startswith(token[0], "MinExponent")) {
-            l = scan_ssize(token);
-            if (errno != 0) {
-                mpd_err_fatal("%s: %s", filename, line);
+            if (strcmp(token[1], "MIN_EMIN") == 0) {
+                l = MPD_MIN_EMIN;
             }
-            /*if (!mpd_qsetemin(&ctx, l)) {
-                mpd_err_fatal("%s: %s", filename, line);
-            }*/
-            /* use a wider range than officially allowed */
+            else {
+                l = scan_ssize(token);
+                if (errno != 0) {
+                    mpd_err_fatal("%s: %s", filename, line);
+                }
+            }
             ctx.emin = l;
             goto cleanup;
         }
@@ -4652,7 +4955,10 @@ doit(char *filename)
             if (token[1] == NULL) {
                 mpd_err_fatal("%s: %s", filename, line);
             }
-            fprintf(stderr, "locale: %s\n", token[1]);
+            if (!generated) {
+                printf("locale: %s\n", token[1]);
+                fflush(stdout);
+            }
             if (setlocale(LC_NUMERIC, token[1]) == NULL) {
                 mpd_err_fatal("%s: %s", filename, line);
             }
@@ -4667,14 +4973,14 @@ doit(char *filename)
          *   - token[1] is the operation type
          *   - testno can be used for setting a watchpoint in the debugger
          */
-        testno = get_testno(token[0]);
+        testno = (uint32_t)get_testno(token[0]);
         (void)testno;
 
         /* The id is in the skip list */
         if (check_skip(token[0])) {
             goto cleanup;
         }
-#ifdef CONFIG_64
+#ifdef MPD_CONFIG_64
         /* Skip 32-bit specific coverage tests. */
         if (startswith(token[0], "cov32")) {
             goto cleanup;
@@ -4725,12 +5031,14 @@ doit(char *filename)
             _Res_Op_Ctx(token, mpd_copy_negate, &ctx);
         }
         else if (eqtoken(token[1], "exp")) {
-            ctx.allcr = 0;
-                        if (testno != 126) {
-                            /* exp: err < 1ulp, but not correctly rounded */
-                _Res_Op_Ctx(token, mpd_exp, &ctx);
-                        }
-            ctx.allcr = 1;
+            if (!generated) {
+                if (testno != 126) {
+                    ctx.allcr = 0;
+                    /* exp: err < 1ulp, but not correctly rounded */
+                    _Res_Op_Ctx(token, mpd_exp, &ctx);
+                    ctx.allcr = 1;
+                }
+            }
             _Res_Op_Ctx(token, mpd_exp, &ctx);
         }
         else if (eqtoken(token[1], "invert")) {
@@ -4740,15 +5048,19 @@ doit(char *filename)
             _Res_Op_Ctx(token, mpd_invroot, &ctx);
         }
         else if (eqtoken(token[1], "ln")) {
-            ctx.allcr = 0;
-            _Res_Op_Ctx(token, mpd_ln, &ctx);
-            ctx.allcr = 1;
+            if (!generated) {
+                ctx.allcr = 0;
+                _Res_Op_Ctx(token, mpd_ln, &ctx);
+                ctx.allcr = 1;
+            }
             _Res_Op_Ctx(token, mpd_ln, &ctx);
         }
         else if (eqtoken(token[1], "log10")) {
-            ctx.allcr = 0;
-            _Res_Op_Ctx(token, mpd_log10, &ctx);
-            ctx.allcr = 1;
+            if (!generated) {
+                ctx.allcr = 0;
+                _Res_Op_Ctx(token, mpd_log10, &ctx);
+                ctx.allcr = 1;
+            }
             _Res_Op_Ctx(token, mpd_log10, &ctx);
         }
         else if (eqtoken(token[1], "logb")) {
@@ -4770,7 +5082,22 @@ doit(char *filename)
             _Res_Op_Ctx(token, mpd_reduce, &ctx);
         }
         else if (eqtoken(token[1], "squareroot")) {
+            #ifdef MPD_CONFIG_32
+                if (ctx.prec == MPD_MAX_PREC) mpd_set_alloc_limit(16000000);
+            #endif
             _Res_Op_Ctx(token, mpd_sqrt, &ctx);
+            #ifdef MPD_CONFIG_32
+                if (ctx.prec == MPD_MAX_PREC) mpd_set_alloc_limit(SIZE_MAX);
+            #endif
+        }
+        else if (eqtoken(token[1], "quantize_squareroot")) {
+            #ifdef MPD_CONFIG_32
+                if (ctx.prec == MPD_MAX_PREC) mpd_set_alloc_limit(16000000);
+            #endif
+            _Res_Op_CtxWithQuantize(token, mpd_sqrt, &ctx);
+            #ifdef MPD_CONFIG_32
+                if (ctx.prec == MPD_MAX_PREC) mpd_set_alloc_limit(SIZE_MAX);
+            #endif
         }
         else if (eqtoken(token[1], "tointegral")) {
             _Res_Op_Ctx(token, mpd_round_to_int, &ctx);
@@ -4809,7 +5136,13 @@ doit(char *filename)
             _Res_Binop_Ctx(token, mpd_copy_sign, &ctx);
         }
         else if (eqtoken(token[1], "divide")) {
+            #ifdef MPD_CONFIG_32
+                if (ctx.prec == MPD_MAX_PREC) mpd_set_alloc_limit(16000000);
+            #endif
             _Res_Binop_Ctx(token, mpd_div, &ctx);
+            #ifdef MPD_CONFIG_32
+                if (ctx.prec == MPD_MAX_PREC) mpd_set_alloc_limit(SIZE_MAX);
+            #endif
         }
         else if (eqtoken(token[1], "divideint")) {
             _Res_Binop_Ctx(token, mpd_divint, &ctx);
@@ -4836,9 +5169,11 @@ doit(char *filename)
             _Res_Binop_Ctx(token, mpd_or, &ctx);
         }
         else if (eqtoken(token[1], "power")) {
-            ctx.allcr = 0;
-            _Res_Binop_Ctx(token, mpd_pow, &ctx);
-            ctx.allcr = 1;
+            if (!generated) {
+                ctx.allcr = 0;
+                _Res_Binop_Ctx(token, mpd_pow, &ctx);
+                ctx.allcr = 1;
+            }
             _Res_Binop_Ctx(token, mpd_pow, &ctx);
         }
         else if (eqtoken(token[1], "quantize")) {
@@ -4861,7 +5196,9 @@ doit(char *filename)
         }
         else if (eqtoken(token[1], "shift")) {
             _Res_Binop_Ctx(token, mpd_shift, &ctx);
-            _Res_Op_Lsize_Ctx(SKIP_NONINT, token, mpd_shiftn, &ctx);
+            if (!generated) {
+                _Res_Op_Lsize_Ctx(SKIP_NONINT, token, mpd_shiftn, &ctx);
+            }
         }
         else if (eqtoken(token[1], "subtract")) {
             _Res_Binop_Ctx(token, mpd_sub, &ctx);
@@ -4908,9 +5245,11 @@ doit(char *filename)
             _Res_EqualBinop_Ctx(token, mpd_or, &ctx);
         }
         else if (eqtoken(token[1], "power_eq")) {
-            ctx.allcr = 0;
-            _Res_EqualBinop_Ctx(token, mpd_pow, &ctx);
-            ctx.allcr = 1;
+            if (!generated) {
+                ctx.allcr = 0;
+                _Res_EqualBinop_Ctx(token, mpd_pow, &ctx);
+                ctx.allcr = 1;
+            }
             _Res_EqualBinop_Ctx(token, mpd_pow, &ctx);
         }
         else if (eqtoken(token[1], "quantize_eq")) {
@@ -5028,8 +5367,7 @@ doit(char *filename)
             _Res_Op_Lsize_Ctx(SKIP_NONINT, token, mpd_shiftl, &ctx);
         }
         else if (eqtoken(token[1], "shiftright")) {
-            _Res_Op_Lsize_Ctx(SKIP_NONINT, token,
-            (void (*)(mpd_t *, const mpd_t *, mpd_ssize_t, mpd_context_t *))mpd_shiftr, &ctx);
+            _Res_Op_Lsize_Ctx(SKIP_NONINT, token, _mpd_shiftr, &ctx);
         }
 
         /* Special case for mpd_qln10() */
@@ -5043,7 +5381,7 @@ doit(char *filename)
         }
 
         /* Special cases for the get_int functions */
-#ifdef CONFIG_64
+#ifdef MPD_CONFIG_64
         else if (eqtoken(token[1], "get_uint64")) {
             _u64_MpdCtx(token, mpd_get_uint, &ctx);
         }
@@ -5066,7 +5404,7 @@ doit(char *filename)
 
 #endif
 
-#ifndef LEGACY_COMPILER
+#ifndef MPD_LEGACY_COMPILER
         else if (eqtoken(token[1], "get_u64")) {
             _u64_MpdCtx(token, mpd_get_u64, &ctx);
         }
@@ -5083,11 +5421,11 @@ doit(char *filename)
         }
 
         else if (startswith(token[1], "get_")) {
-            ;
+            /* empty */
         }
 
         else if (eqtoken(token[1], "rescale")) {
-            ;
+            /* empty */
         }
 
         /* unknown operation */
@@ -5118,94 +5456,111 @@ doit(char *filename)
 }
 
 
-int main(int argc, char **argv)
+static void
+usage(void)
 {
-    mpd_ssize_t ma, limit;
-    int n = 1;
+    fputs("runtest: usage: runtest testfile [--custom] [--alloc]\n", stderr);
+    exit(EXIT_FAILURE);
+}
 
-    if (argc == 2) {
-        limit = 2;
-    }
-    else if (argc == 3) {
-        if (strcmp(argv[n++], "--all") != 0) {
-            fputs("runtest: usage: runtest [--all] testfile\n", stderr);
-            exit(EXIT_FAILURE);
+
+int
+main(int argc, char *argv[])
+{
+    const char *filename = NULL;
+    bool custom_alloc = false;
+    bool check_alloc = false;
+
+    for (int i = 1; i < argc; i++) {
+        if (!filename && (strcmp(argv[i], "-") == 0 || !startswith(argv[i], "--"))) {
+            filename = argv[i];
         }
-        limit = MPD_MINALLOC_MAX;
+        else if (!custom_alloc && strcmp(argv[i], "--custom") == 0) {
+            custom_alloc = true;
+        }
+        else if (!check_alloc && strcmp(argv[i], "--alloc") == 0) {
+            check_alloc = true;
+        }
+        else {
+            usage();
+        }
     }
-    else {
-        fputs("runtest: usage: runtest [--all] testfile\n", stderr);
-        exit(EXIT_FAILURE);
+    if (filename == NULL) {
+        usage();
     }
 
     /* Test version */
-    if (strcmp(mpd_version(), "2.4.2") != 0) {
-        fputs("runtest: error: mpd_version() != 2.4.2\n", stderr);
+    if (strcmp(mpd_version(), "2.5.1") != (0)) {
+        fputs("runtest: error: mpd_version() != 2.5.1\n", stderr);
         exit(EXIT_FAILURE);
     }
-    if (strcmp(MPD_VERSION, "2.4.2") != 0) {
-        fputs("runtest: error: MPD_VERSION != 2.4.2\n", stderr);
+    if (strcmp(MPD_VERSION, "2.5.1") != (0)) {
+        fputs("runtest: error: MPD_VERSION != 2.5.1\n", stderr);
         exit(EXIT_FAILURE);
     }
-    if (MPD_MAJOR_VERSION != 2) {
+
+#ifdef _MSC_VER
+  #pragma warning(push)
+  #pragma warning(disable : 4127)
+#endif
+    if (MPD_MAJOR_VERSION != (2)) {
         fputs("runtest: error: MPD_MAJOR_VERSION != 2\n", stderr);
         exit(EXIT_FAILURE);
     }
-    if (MPD_MINOR_VERSION != 4) {
-        fputs("runtest: error: MPD_MINOR_VERSION != 4\n", stderr);
+    if (MPD_MINOR_VERSION != (5)) {
+        fputs("runtest: error: MPD_MINOR_VERSION != 5\n", stderr);
         exit(EXIT_FAILURE);
     }
-    if (MPD_MICRO_VERSION != 2) {
-        fputs("runtest: error: MPD_MICRO_VERSION != 2\n", stderr);
+    if (MPD_MICRO_VERSION != (1)) {
+        fputs("runtest: error: MPD_MICRO_VERSION != 1\n", stderr);
         exit(EXIT_FAILURE);
     }
-    if (MPD_VERSION_HEX != 0x02040200) {
-        fputs("runtest: error: MPD_VERSION_HEX != 0x02040200\n", stderr);
+    if (MPD_VERSION_HEX != (0x02050100)) {
+        fputs("runtest: error: MPD_VERSION_HEX != 0x02050100\n", stderr);
         exit(EXIT_FAILURE);
     }
+#ifdef _MSC_VER
+  #pragma warning(pop)
+#endif
 
+    generated = strcmp(filename, "-") == 0;
 
+    /* Initialize random number generator */
     srand((unsigned int)time(NULL));
 
-    for (ma = MPD_MINALLOC_MIN; ma <= limit; ma++) {
+    /* Initialize custom allocation functions */
+    mpd_init_alloc(custom_alloc, check_alloc);
 
-        /* DON'T do this in a real program. You have to be sure
-         * that no previously allocated decimals will ever be used. */
-        MPD_MINALLOC = ma;
-        if (n == 2) {
-            fprintf(stderr, "minalloc: %" PRI_mpd_ssize_t "\n", MPD_MINALLOC);
-        }
+    /* Initialize MPD_MINALLOC (optional, default is 2) */
+    MPD_MINALLOC = 2;
 
-        op = mpd_qnew();
-        op1 = mpd_qnew();
-        op2 = mpd_qnew();
-        op3 = mpd_qnew();
-        tmp = mpd_qnew();
-        tmp1 = mpd_qnew();
-        tmp2 = mpd_qnew();
-        tmp3 = mpd_qnew();
-        result = mpd_qnew();
-        result1 = mpd_qnew();
-        result2 = mpd_qnew();
+    op = mpd_qnew();
+    op1 = mpd_qnew();
+    op2 = mpd_qnew();
+    op3 = mpd_qnew();
+    tmp = mpd_qnew();
+    tmp1 = mpd_qnew();
+    tmp2 = mpd_qnew();
+    tmp3 = mpd_qnew();
+    result = mpd_qnew();
+    result1 = mpd_qnew();
+    result2 = mpd_qnew();
 
-        doit(argv[n]);
+    triple_cov();
+    doit(filename);
 
-        mpd_del(op);
-        mpd_del(op1);
-        mpd_del(op2);
-        mpd_del(op3);
-        mpd_del(tmp);
-        mpd_del(tmp1);
-        mpd_del(tmp2);
-        mpd_del(tmp3);
-        mpd_del(result);
-        mpd_del(result1);
-        mpd_del(result2);
-    }
+    mpd_del(op);
+    mpd_del(op1);
+    mpd_del(op2);
+    mpd_del(op3);
+    mpd_del(tmp);
+    mpd_del(tmp1);
+    mpd_del(tmp2);
+    mpd_del(tmp3);
+    mpd_del(result);
+    mpd_del(result1);
+    mpd_del(result2);
 
 
     return global_failure;
 }
-
-
-

@@ -3,7 +3,7 @@
 DOCUMENTATION LICENSE
 =====================
 
-Copyright 2010-2016 Stefan Krah. All rights reserved.
+Copyright 2010-2020 Stefan Krah. All rights reserved.
 
 Redistribution and use in source (RST) and 'compiled' forms (HTML, PDF,
 PostScript and so forth) with or without modification, are permitted
@@ -47,12 +47,12 @@ RST files
 
 The modification notice may be added below the license:
 
-   Copyright 2010-2016 Stefan Krah. All rights reserved.
+   Copyright 2010-2020 Stefan Krah. All rights reserved.
    ...
    ...
    IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-   This file was modified in 2016 by DISTRIBUTOR.
+   This file was modified in 2020 by DISTRIBUTOR.
 
 
 HTML files
@@ -60,7 +60,7 @@ HTML files
 
 The modification notice may be added to the copyright footer:
 
-   Copyright 2010-2016 Stefan Krah, modified 2016 by DISTRIBUTOR.
+   Copyright 2010-2020 Stefan Krah, modified 2020 by DISTRIBUTOR.
 
 
 

@@ -1,10 +1,10 @@
 #!/bin/sh
 
-if ! [ -d testdata ]; then
+if [ ! -d testdata ]; then
     mkdir testdata
 fi
 
-if ! [ -f testdata/add.decTest ]; then
+if [ x"$1" != x"--local" -a ! -f testdata/add.decTest ]; then
     # The official tests are freely downloadable, but copyrighted.
     WGET=`which wget`
     if [ ! -f "$WGET" ]; then
@@ -14,13 +14,13 @@ if ! [ -f testdata/add.decTest ]; then
         exit 1
     fi
     printf "\nGetting official tests ... \n\n"
-    $WGET -nv http://speleotrove.com/decimal/dectest.zip &&
+    $WGET -nv http://speleotrove.com/decimal/dectest.zip 2>&1 &&
     cd testdata &&
     unzip -qq ../dectest.zip &&
     cd ../
 fi
 
-if ! [ -f testdata/baseconv.decTest ]; then
+if [ ! -f testdata/baseconv.decTest ]; then
     cp testdata_dist/* testdata
 fi
 

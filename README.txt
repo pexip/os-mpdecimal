@@ -29,6 +29,25 @@ The library has been tested on the following platforms:
    mips32: Debian
 
 
+libmpdec++
+==========
+
+libmpdec++ is a complete implementation of the General Decimal Arithmetic
+Specification.  libmpdec++ is mostly a header library around libmpdec's
+C functions.
+
+The library frees users from manual memory management and has an easy API
+with inline operators similar to the one in Python's decimal module. Like
+Python's decimal module, libmpdec++ has a thread local context for inline
+operators and other functions that use the implicit context.
+
+In benchmarks the speed is close to libmpdec (about 4% slower due to the
+copying, destructor overhead and the thread local context).
+
+libmpdec++ has been tested on 64/32-bit Linux, 64/32-bit FreeBSD and OpenBSD
+and 64/32-bit Windows.
+
+
 
 Contact: Stefan Krah <skrah@bytereef.org>
 
