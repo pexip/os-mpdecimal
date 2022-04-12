@@ -1,51 +1,57 @@
 
+
 SRCDIR = ../libmpdec
 
-CC = @CC@
-LD = @CC@
-AR = @AR@
+ENABLE_SHARED = @ENABLE_SHARED@
 
 LIBSTATIC = @LIBSTATIC@
 LIBSHARED = @LIBSHARED@
+LINK_STATIC = @LINK_STATIC@
+LINK_DYNAMIC = @LINK_DYNAMIC@
+LINK_SHLIBS = @LINK_SHLIBS@
 
-MPD_WARN = @MPD_WARN@
-MPD_CONFIG = @MPD_CONFIG@
+CC = @CC@
+AR = @AR@
+
+MPD_GNU99 = @MPD_GNU99@
 
 CONFIGURE_CFLAGS = @CONFIGURE_CFLAGS@
-CFLAGS ?= $(CONFIGURE_CFLAGS)
+MPD_CFLAGS = $(strip $(filter-out $(CFLAGS),$(CONFIGURE_CFLAGS)) $(CFLAGS) $(MPD_GNU99))
+
+LINK_LIBSTATIC = $(strip $(LINK_STATIC) $(SRCDIR)/$(LIBSTATIC) $(LINK_DYNAMIC))
+LINK_LIBSHARED = $(strip $(LINK_SHLIBS))
+
+ifeq ($(ENABLE_SHARED), yes)
+default: runtest runtest_shared
+else
+default: runtest
+endif
 
 
-default: runtest runtest_shared runtest_alloc runtest_alloc_shared
+# Objects.
+test.o:\
+Makefile test.c $(SRCDIR)/mpdecimal.h test.h
+	$(CC) -I$(SRCDIR) $(MPD_CFLAGS) -c test.c
 
+runtest.o:\
+Makefile runtest.c $(SRCDIR)/mpdecimal.h test.h vctest.h
+	$(CC) -I$(SRCDIR) $(MPD_CFLAGS) -c runtest.c
 
 # Short test.
 runtest:\
-Makefile runtest.c $(SRCDIR)/io.h $(SRCDIR)/mpdecimal.h $(SRCDIR)/memory.h \
-malloc_fail.c malloc_fail.h mptest.h $(SRCDIR)/$(LIBSTATIC)
-	$(CC) -I$(SRCDIR) $(CFLAGS) -o runtest runtest.c malloc_fail.c $(SRCDIR)/libmpdec.a -lm
+Makefile runtest.o test.o $(SRCDIR)/$(LIBSTATIC)
+	$(CC) -I$(SRCDIR) $(MPD_CFLAGS) -o runtest runtest.o test.o $(LINK_LIBSTATIC) -lm
 
 runtest_shared:\
-Makefile runtest.c $(SRCDIR)/io.h $(SRCDIR)/mpdecimal.h $(SRCDIR)/memory.h \
-malloc_fail.c malloc_fail.h mptest.h $(SRCDIR)/$(LIBSHARED)
-	$(CC) -I$(SRCDIR) -L$(SRCDIR) $(CFLAGS) -o runtest_shared runtest.c malloc_fail.c -lmpdec -lm
-
-# Also test all allocation failures.
-runtest_alloc:\
-Makefile runtest.c $(SRCDIR)/io.h $(SRCDIR)/mpdecimal.h $(SRCDIR)/memory.h \
-malloc_fail.c malloc_fail.h mptest.h $(SRCDIR)/$(LIBSTATIC)
-	$(CC) -I$(SRCDIR) $(CFLAGS) -DTEST_ALLOC -o runtest_alloc runtest.c malloc_fail.c $(SRCDIR)/libmpdec.a -lm
-
-runtest_alloc_shared:\
-Makefile runtest.c $(SRCDIR)/io.h $(SRCDIR)/mpdecimal.h $(SRCDIR)/memory.h \
-malloc_fail.c malloc_fail.h mptest.h $(SRCDIR)/$(LIBSHARED)
-	$(CC) -I$(SRCDIR) -L$(SRCDIR) $(CFLAGS) -DTEST_ALLOC -o runtest_alloc_shared runtest.c malloc_fail.c -lmpdec -lm
+Makefile runtest.o test.o $(SRCDIR)/$(LIBSHARED)
+	$(CC) -I$(SRCDIR) $(MPD_CFLAGS) -o runtest_shared runtest.o test.o -L$(SRCDIR) $(LINK_LIBSHARED) -lm
 
 
 FORCE:
 
 clean: FORCE
 	rm -f *.o *.gch *.gcda *.gcno *.gcov *.dyn *.dpi *.lock
-	rm -f runtest runtest_shared runtest_alloc runtest_alloc_shared
+	rm -f runtest runtest_shared
 
 distclean: FORCE
 	$(MAKE) clean

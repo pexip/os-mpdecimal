@@ -1,8 +1,20 @@
 @ECHO off
 
-call vcvarsall x64
+"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere" -latest -property installationPath > vcpath.txt
+set /p vcpath=<vcpath.txt
+del vcpath.txt
+call "%vcpath%\VC\Auxiliary\Build\vcvarsall.bat" x64
 
 cd ..\libmpdec
+if exist Makefile nmake distclean
+
+cd ..\libmpdec++
+if exist Makefile nmake distclean
+
+cd ..\tests
+if exist Makefile nmake distclean
+
+cd ..\tests++
 if exist Makefile nmake distclean
 
 cd ..\vcbuild

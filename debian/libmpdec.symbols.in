@@ -159,6 +159,7 @@ libmpdec.so.2 libmpdec2
  mpd_qcompare_signal@Base 2.3
  mpd_qcopy@Base 2.3
  mpd_qcopy_abs@Base 2.3
+ mpd_qcopy_cxx@Base 2.5
  mpd_qcopy_negate@Base 2.3
  mpd_qcopy_sign@Base 2.3
  mpd_qdiv@Base 2.3
@@ -229,10 +230,13 @@ libmpdec.so.2 libmpdec2
  mpd_qscaleb@Base 2.3
  mpd_qset_i32@Base 2.3
  mpd_qset_i64@Base 2.3
+ mpd_qset_i64_exact@Base 2.5
  mpd_qset_ssize@Base 2.3
  mpd_qset_string@Base 2.3
+ mpd_qset_string_exact@Base 2.5
  mpd_qset_u32@Base 2.3
  mpd_qset_u64@Base 2.3
+ mpd_qset_u64_exact@Base 2.5
  mpd_qset_uint@Base 2.3
  mpd_qsetclamp@Base 2.3
  mpd_qsetcr@Base 2.3
@@ -339,3 +343,159 @@ libmpdec.so.2 libmpdec2
  mpd_word_digits@Base 2.3
  mpd_xor@Base 2.3
  mpd_zerocoeff@Base 2.3
+libmpdec++.so.2 libmpdec2 #MINVER#
+ _ZN7decimal10MaxContextEv@Base 2.5
+ _ZN7decimal10ValueErrorC1ERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEE@Base 2.5
+ _ZN7decimal10ValueErrorC2ERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEE@Base 2.5
+ _ZN7decimal10ValueErrorD0Ev@Base 2.5
+ _ZN7decimal10ValueErrorD1Ev@Base 2.5
+ _ZN7decimal10ValueErrorD2Ev@Base 2.5
+ _ZN7decimal11IEEEContextEi@Base 2.5
+ _ZN7decimal11MallocErrorC1ERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEE@Base 2.5
+ _ZN7decimal11MallocErrorC2ERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEE@Base 2.5
+ _ZN7decimal11MallocErrorD0Ev@Base 2.5
+ _ZN7decimal11MallocErrorD1Ev@Base 2.5
+ _ZN7decimal11MallocErrorD2Ev@Base 2.5
+ _ZN7decimal12RuntimeErrorC1ERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEE@Base 2.5
+ _ZN7decimal12RuntimeErrorC2ERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEE@Base 2.5
+ _ZN7decimal12RuntimeErrorD0Ev@Base 2.5
+ _ZN7decimal12RuntimeErrorD1Ev@Base 2.5
+ _ZN7decimal12RuntimeErrorD2Ev@Base 2.5
+ _ZN7decimal14DivisionByZeroD0Ev@Base 2.5
+ _ZN7decimal14DivisionByZeroD1Ev@Base 2.5
+ _ZN7decimal14DivisionByZeroD2Ev@Base 2.5
+ _ZN7decimal16ConversionSyntaxD0Ev@Base 2.5
+ _ZN7decimal16ConversionSyntaxD1Ev@Base 2.5
+ _ZN7decimal16ConversionSyntaxD2Ev@Base 2.5
+ _ZN7decimal16DecimalExceptionC1ERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEE@Base 2.5
+ _ZN7decimal16DecimalExceptionC2ERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEE@Base 2.5
+ _ZN7decimal16DecimalExceptionD0Ev@Base 2.5
+ _ZN7decimal16DecimalExceptionD1Ev@Base 2.5
+ _ZN7decimal16DecimalExceptionD2Ev@Base 2.5
+ _ZN7decimal16InvalidOperationD0Ev@Base 2.5
+ _ZN7decimal16InvalidOperationD1Ev@Base 2.5
+ _ZN7decimal16InvalidOperationD2Ev@Base 2.5
+ _ZN7decimal16context_templateE@Base 2.5
+ _ZN7decimal17DivisionUndefinedD0Ev@Base 2.5
+ _ZN7decimal17DivisionUndefinedD1Ev@Base 2.5
+ _ZN7decimal17DivisionUndefinedD2Ev@Base 2.5
+ _ZN7decimal18DivisionImpossibleD0Ev@Base 2.5
+ _ZN7decimal18DivisionImpossibleD1Ev@Base 2.5
+ _ZN7decimal18DivisionImpossibleD2Ev@Base 2.5
+ _ZN7decimal20IEEEInvalidOperationD0Ev@Base 2.5
+ _ZN7decimal20IEEEInvalidOperationD1Ev@Base 2.5
+ _ZN7decimal20IEEEInvalidOperationD2Ev@Base 2.5
+ _ZN7decimal7ClampedD0Ev@Base 2.5
+ _ZN7decimal7ClampedD1Ev@Base 2.5
+ _ZN7decimal7ClampedD2Ev@Base 2.5
+ _ZN7decimal7Context7raiseitEj@Base 2.5
+ (arch=@32@)_ZN7decimal7ContextC1Eiiiijii@Base 2.5
+ (arch=@32@)_ZN7decimal7ContextC2Eiiiijii@Base 2.5
+ (arch=@32@)_ZN7decimal7Decimal4ln10ExRNS_7ContextE@Base 2.5
+ (arch=@64@)_ZN7decimal7ContextC1Elllijii@Base 2.5
+ (arch=@64@)_ZN7decimal7ContextC2Elllijii@Base 2.5
+ (arch=@64@)_ZN7decimal7Decimal4ln10ElRNS_7ContextE@Base 2.5
+ _ZN7decimal7Decimal5exactEPKcRNS_7ContextE@Base 2.5
+ _ZN7decimal7Decimal5exactERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEERNS_7ContextE@Base 2.5
+ _ZN7decimal7Decimal5radixEv@Base 2.5
+ _ZN7decimal7InexactD0Ev@Base 2.5
+ _ZN7decimal7InexactD1Ev@Base 2.5
+ _ZN7decimal7InexactD2Ev@Base 2.5
+ _ZN7decimal7RoundedD0Ev@Base 2.5
+ _ZN7decimal7RoundedD1Ev@Base 2.5
+ _ZN7decimal7RoundedD2Ev@Base 2.5
+ _ZN7decimal7contextE@Base 2.5
+ _ZN7decimal8OverflowD0Ev@Base 2.5
+ _ZN7decimal8OverflowD1Ev@Base 2.5
+ _ZN7decimal8OverflowD2Ev@Base 2.5
+ _ZN7decimal9SubnormalD0Ev@Base 2.5
+ _ZN7decimal9SubnormalD1Ev@Base 2.5
+ _ZN7decimal9SubnormalD2Ev@Base 2.5
+ _ZN7decimal9UnderflowD0Ev@Base 2.5
+ _ZN7decimal9UnderflowD1Ev@Base 2.5
+ _ZN7decimal9UnderflowD2Ev@Base 2.5
+ _ZN7decimallsERSoRKNS_7ContextE@Base 2.5
+ _ZN7decimallsERSoRKNS_7DecimalE@Base 2.5
+ (optional=templinst)_ZN9__gnu_cxx12__to_xstringINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEEcEET_PFiPT0_mPKS8_PvEmSB_z@Base 2.5
+ _ZNK7decimal10ValueError4whatEv@Base 2.5
+ _ZNK7decimal11MallocError4whatEv@Base 2.5
+ _ZNK7decimal12RuntimeError4whatEv@Base 2.5
+ _ZNK7decimal16DecimalException4whatEv@Base 2.5
+ _ZNK7decimal7Context4reprB5cxx11Ev@Base 2.5
+ _ZNK7decimal7Decimal4reprB5cxx11Eb@Base 2.5
+ (optional=inline)_ZNK7decimal7Decimal6to_sciB5cxx11Eb@Base 2.5
+ (optional=templinst)_ZNSt16_Sp_counted_baseILN9__gnu_cxx12_Lock_policyE2EE10_M_releaseEv@Base 2.5
+ (optional=templinst)_ZNSt19_Sp_counted_deleterIPKcZN7decimal4util9shared_cpES1_EUlS1_E_SaIvELN9__gnu_cxx12_Lock_policyE2EE10_M_destroyEv@Base 2.5
+ (optional=templinst)_ZNSt19_Sp_counted_deleterIPKcZN7decimal4util9shared_cpES1_EUlS1_E_SaIvELN9__gnu_cxx12_Lock_policyE2EE10_M_disposeEv@Base 2.5
+ (optional=templinst)_ZNSt19_Sp_counted_deleterIPKcZN7decimal4util9shared_cpES1_EUlS1_E_SaIvELN9__gnu_cxx12_Lock_policyE2EE14_M_get_deleterERKSt9type_info@Base 2.5
+ (optional=templinst)_ZNSt19_Sp_counted_deleterIPKcZN7decimal4util9shared_cpES1_EUlS1_E_SaIvELN9__gnu_cxx12_Lock_policyE2EED0Ev@Base 2.5
+ (optional=templinst)_ZNSt19_Sp_counted_deleterIPKcZN7decimal4util9shared_cpES1_EUlS1_E_SaIvELN9__gnu_cxx12_Lock_policyE2EED1Ev@Base 2.5
+ (optional=templinst)_ZNSt19_Sp_counted_deleterIPKcZN7decimal4util9shared_cpES1_EUlS1_E_SaIvELN9__gnu_cxx12_Lock_policyE2EED2Ev@Base 2.5
+ (optional=templinst)_ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE12_M_constructIPcEEvT_S7_St20forward_iterator_tag@Base 2.5
+ _ZTHN7decimal7contextE@Base 2.5
+ _ZTHN7decimal7contextE@Base 2.5
+ _ZTIN7decimal10ValueErrorE@Base 2.5
+ _ZTIN7decimal11MallocErrorE@Base 2.5
+ _ZTIN7decimal12RuntimeErrorE@Base 2.5
+ _ZTIN7decimal14DivisionByZeroE@Base 2.5
+ _ZTIN7decimal16ConversionSyntaxE@Base 2.5
+ _ZTIN7decimal16DecimalExceptionE@Base 2.5
+ _ZTIN7decimal16InvalidOperationE@Base 2.5
+ _ZTIN7decimal17DivisionUndefinedE@Base 2.5
+ _ZTIN7decimal18DivisionImpossibleE@Base 2.5
+ _ZTIN7decimal20IEEEInvalidOperationE@Base 2.5
+ _ZTIN7decimal7ClampedE@Base 2.5
+ _ZTIN7decimal7InexactE@Base 2.5
+ _ZTIN7decimal7RoundedE@Base 2.5
+ _ZTIN7decimal8OverflowE@Base 2.5
+ _ZTIN7decimal9SubnormalE@Base 2.5
+ _ZTIN7decimal9UnderflowE@Base 2.5
+ (optional=templinst)_ZTISt11_Mutex_baseILN9__gnu_cxx12_Lock_policyE2EE@Base 2.5
+ (optional=templinst)_ZTISt16_Sp_counted_baseILN9__gnu_cxx12_Lock_policyE2EE@Base 2.5
+ (optional=templinst)_ZTISt19_Sp_counted_deleterIPKcZN7decimal4util9shared_cpES1_EUlS1_E_SaIvELN9__gnu_cxx12_Lock_policyE2EE@Base 2.5
+ (optional=templinst)_ZTIN9__gnu_cxx7__mutexE@Base 2.5
+ (optional=templinst)_ZTISt11_Mutex_baseILN9__gnu_cxx12_Lock_policyE1EE@Base 2.5
+ (optional=templinst)_ZTISt16_Sp_counted_baseILN9__gnu_cxx12_Lock_policyE1EE@Base 2.5
+ (optional=templinst)_ZTISt19_Sp_counted_deleterIPKcZN7decimal4util9shared_cpES1_EUlS1_E_SaIvELN9__gnu_cxx12_Lock_policyE1EE@Base 2.5
+ (arch=armhf)_ZTIZN7decimal4util9shared_cpEPKcEUlS2_E_@Base 2.5
+ _ZTSN7decimal10ValueErrorE@Base 2.5
+ _ZTSN7decimal11MallocErrorE@Base 2.5
+ _ZTSN7decimal12RuntimeErrorE@Base 2.5
+ _ZTSN7decimal14DivisionByZeroE@Base 2.5
+ _ZTSN7decimal16ConversionSyntaxE@Base 2.5
+ _ZTSN7decimal16DecimalExceptionE@Base 2.5
+ _ZTSN7decimal16InvalidOperationE@Base 2.5
+ _ZTSN7decimal17DivisionUndefinedE@Base 2.5
+ _ZTSN7decimal18DivisionImpossibleE@Base 2.5
+ _ZTSN7decimal20IEEEInvalidOperationE@Base 2.5
+ _ZTSN7decimal7ClampedE@Base 2.5
+ _ZTSN7decimal7InexactE@Base 2.5
+ _ZTSN7decimal7RoundedE@Base 2.5
+ _ZTSN7decimal8OverflowE@Base 2.5
+ _ZTSN7decimal9SubnormalE@Base 2.5
+ _ZTSN7decimal9UnderflowE@Base 2.5
+ (optional=templinst)_ZTSSt11_Mutex_baseILN9__gnu_cxx12_Lock_policyE2EE@Base 2.5
+ (optional=templinst)_ZTSSt16_Sp_counted_baseILN9__gnu_cxx12_Lock_policyE2EE@Base 2.5
+ (optional=templinst)_ZTSSt19_Sp_counted_deleterIPKcZN7decimal4util9shared_cpES1_EUlS1_E_SaIvELN9__gnu_cxx12_Lock_policyE2EE@Base 2.5
+ (optional=templinst)_ZTSN9__gnu_cxx7__mutexE@Base 2.5
+ (optional=templinst)_ZTSSt11_Mutex_baseILN9__gnu_cxx12_Lock_policyE1EE@Base 2.5
+ (optional=templinst)_ZTSSt16_Sp_counted_baseILN9__gnu_cxx12_Lock_policyE1EE@Base 2.5
+ (optional=templinst)_ZTSSt19_Sp_counted_deleterIPKcZN7decimal4util9shared_cpES1_EUlS1_E_SaIvELN9__gnu_cxx12_Lock_policyE1EE@Base 2.5
+ _ZTSZN7decimal4util9shared_cpEPKcEUlS2_E_@Base 2.5
+ _ZTVN7decimal10ValueErrorE@Base 2.5
+ _ZTVN7decimal11MallocErrorE@Base 2.5
+ _ZTVN7decimal12RuntimeErrorE@Base 2.5
+ _ZTVN7decimal14DivisionByZeroE@Base 2.5
+ _ZTVN7decimal16ConversionSyntaxE@Base 2.5
+ _ZTVN7decimal16DecimalExceptionE@Base 2.5
+ _ZTVN7decimal16InvalidOperationE@Base 2.5
+ _ZTVN7decimal17DivisionUndefinedE@Base 2.5
+ _ZTVN7decimal18DivisionImpossibleE@Base 2.5
+ _ZTVN7decimal20IEEEInvalidOperationE@Base 2.5
+ _ZTVN7decimal7ClampedE@Base 2.5
+ _ZTVN7decimal7InexactE@Base 2.5
+ _ZTVN7decimal7RoundedE@Base 2.5
+ _ZTVN7decimal8OverflowE@Base 2.5
+ _ZTVN7decimal9SubnormalE@Base 2.5
+ _ZTVN7decimal9UnderflowE@Base 2.5
+ (optional=templinst)_ZTVSt19_Sp_counted_deleterIPKcZN7decimal4util9shared_cpES1_EUlS1_E_SaIvELN9__gnu_cxx12_Lock_policyE2EE@Base 2.5

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2016 Stefan Krah. All rights reserved.
+ * Copyright (c) 2008-2020 Stefan Krah. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,25 +26,30 @@
  */
 
 
-#ifndef MPDECIMAL_H
-#define MPDECIMAL_H
+#ifndef LIBMPDEC_MPDECIMAL_H_
+#define LIBMPDEC_MPDECIMAL_H_
 
 
 #ifdef __cplusplus
+  #include <cinttypes>
+  #include <climits>
+  #include <cstdint>
+  #include <cstdio>
+  #include <cstdlib>
+  #define MPD_UINT8_C(x) (static_cast<uint8_t>(x))
 extern "C" {
+#else
+  #include <inttypes.h>
+  #include <limits.h>
+  #include <stdint.h>
+  #include <stdio.h>
+  #include <stdlib.h>
+  #define MPD_UINT8_C(x) ((uint8_t)x)
+  #undef inline
+  #define inline __inline
 #endif
 
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <limits.h>
-#include <assert.h>
-
-#include "vccompat.h"
-#ifndef UNUSED
-  #define UNUSED
-#endif
 #define MPD_PRAGMA(x)
 #define MPD_HIDE_SYMBOLS_START
 #define MPD_HIDE_SYMBOLS_END
@@ -52,22 +57,12 @@ extern "C" {
 
 #define IMPORTEXPORT
 
-#if defined (BUILD_DLL)
+#if defined (BUILD_LIBMPDEC)
   #undef IMPORTEXPORT
-  #define IMPORTEXPORT __declspec( dllexport )
-#elif defined (USE_DLL)
+  #define IMPORTEXPORT __declspec(dllexport)
+#elif defined(_DLL)
   #undef IMPORTEXPORT
-  #define IMPORTEXPORT __declspec( dllimport )
-#endif
-
-
-#if !defined(LEGACY_COMPILER)
-  #if !defined(UINT64_MAX)
-    /* The following #error is just a warning. If the compiler indeed does
-     * not have uint64_t, it is perfectly safe to comment out the #error. */
-    #error "Warning: Compiler without uint64_t. Comment out this line."
-    #define LEGACY_COMPILER
-  #endif
+  #define IMPORTEXPORT __declspec(dllimport)
 #endif
 
 
@@ -76,10 +71,10 @@ extern "C" {
 /******************************************************************************/
 
 #define MPD_MAJOR_VERSION 2
-#define MPD_MINOR_VERSION 4
-#define MPD_MICRO_VERSION 2
+#define MPD_MINOR_VERSION 5
+#define MPD_MICRO_VERSION 1
 
-#define MPD_VERSION "2.4.2"
+#define MPD_VERSION "2.5.1"
 
 #define MPD_VERSION_HEX ((MPD_MAJOR_VERSION << 24) | \
                          (MPD_MINOR_VERSION << 16) | \
@@ -91,6 +86,18 @@ IMPORTEXPORT const char *mpd_version(void);
 /******************************************************************************/
 /*                      Types for 64 bit architectures                        */
 /******************************************************************************/
+
+/* ABI: 64-bit */
+#define MPD_CONFIG_64 1
+
+#ifdef MPD_CONFIG_32
+  #error "cannot use MPD_CONFIG_32 with 64-bit header."
+#endif
+
+#ifdef CONFIG_32
+  #error "cannot use CONFIG_32 with 64-bit header."
+#endif
+
 
 /* types for modular and base arithmetic */
 #define MPD_UINT_MAX UINT64_MAX
@@ -122,6 +129,7 @@ typedef int64_t mpd_ssize_t;
 #define MPD_EXP_INF 2000000000000000001LL
 #define MPD_EXP_CLAMP (-4000000000000000001LL)
 #define MPD_MAXIMPORT 105263157894736842L /* ceil((2*MPD_MAX_PREC)/MPD_RDIGITS) */
+#define MPD_IEEE_CONTEXT_MAX_BITS 512     /* 16*(log2(MPD_MAX_EMAX / 3)-3) */
 
 /* conversion specifiers */
 #define PRI_mpd_uint_t PRIu64
@@ -151,8 +159,8 @@ enum {
 
 enum { MPD_CLAMP_DEFAULT, MPD_CLAMP_IEEE_754, MPD_CLAMP_GUARD };
 
-IMPORTEXPORT extern const char *mpd_round_string[MPD_ROUND_GUARD];
-IMPORTEXPORT extern const char *mpd_clamp_string[MPD_CLAMP_GUARD];
+IMPORTEXPORT extern const char * const mpd_round_string[MPD_ROUND_GUARD];
+IMPORTEXPORT extern const char * const mpd_clamp_string[MPD_CLAMP_GUARD];
 
 
 typedef struct mpd_context_t {
@@ -209,7 +217,6 @@ typedef struct mpd_context_t {
 #define MPD_Insufficient_storage MPD_Malloc_error
 
 /* IEEE 754 interchange format contexts */
-#define MPD_IEEE_CONTEXT_MAX_BITS 512 /* 16*(log2(MPD_MAX_EMAX / 3)-3) */
 #define MPD_DECIMAL32 32
 #define MPD_DECIMAL64 64
 #define MPD_DECIMAL128 128
@@ -254,16 +261,16 @@ IMPORTEXPORT void mpd_addstatus_raise(mpd_context_t *ctx, uint32_t flags);
 /******************************************************************************/
 
 /* mpd_t flags */
-#define MPD_POS                 ((uint8_t)0)
-#define MPD_NEG                 ((uint8_t)1)
-#define MPD_INF                 ((uint8_t)2)
-#define MPD_NAN                 ((uint8_t)4)
-#define MPD_SNAN                ((uint8_t)8)
+#define MPD_POS                 MPD_UINT8_C(0)
+#define MPD_NEG                 MPD_UINT8_C(1)
+#define MPD_INF                 MPD_UINT8_C(2)
+#define MPD_NAN                 MPD_UINT8_C(4)
+#define MPD_SNAN                MPD_UINT8_C(8)
 #define MPD_SPECIAL (MPD_INF|MPD_NAN|MPD_SNAN)
-#define MPD_STATIC              ((uint8_t)16)
-#define MPD_STATIC_DATA         ((uint8_t)32)
-#define MPD_SHARED_DATA         ((uint8_t)64)
-#define MPD_CONST_DATA          ((uint8_t)128)
+#define MPD_STATIC              MPD_UINT8_C(16)
+#define MPD_STATIC_DATA         MPD_UINT8_C(32)
+#define MPD_SHARED_DATA         MPD_UINT8_C(64)
+#define MPD_CONST_DATA          MPD_UINT8_C(128)
 #define MPD_DATAFLAGS (MPD_STATIC_DATA|MPD_SHARED_DATA|MPD_CONST_DATA)
 
 /* mpd_t */
@@ -277,7 +284,29 @@ typedef struct mpd_t {
 } mpd_t;
 
 
-typedef unsigned char uchar;
+/******************************************************************************/
+/*                                    Triple                                  */
+/******************************************************************************/
+
+/* status cases for getting a triple */
+enum mpd_triple_class {
+  MPD_TRIPLE_NORMAL,
+  MPD_TRIPLE_INF,
+  MPD_TRIPLE_QNAN,
+  MPD_TRIPLE_SNAN,
+  MPD_TRIPLE_ERROR,
+};
+
+typedef struct {
+  enum mpd_triple_class tag;
+  uint8_t sign;
+  uint64_t hi;
+  uint64_t lo;
+  int64_t exp;
+} mpd_uint128_triple_t;
+
+IMPORTEXPORT int mpd_from_uint128_triple(mpd_t *result, const mpd_uint128_triple_t *triple, uint32_t *status);
+IMPORTEXPORT mpd_uint128_triple_t mpd_as_uint128_triple(const mpd_t *a);
 
 
 /******************************************************************************/
@@ -304,7 +333,7 @@ IMPORTEXPORT mpd_ssize_t mpd_to_sci_size(char **res, const mpd_t *dec, int fmt);
 IMPORTEXPORT mpd_ssize_t mpd_to_eng_size(char **res, const mpd_t *dec, int fmt);
 IMPORTEXPORT int mpd_validate_lconv(mpd_spec_t *spec);
 IMPORTEXPORT int mpd_parse_fmt_str(mpd_spec_t *spec, const char *fmt, int caps);
-IMPORTEXPORT char * mpd_qformat_spec(const mpd_t *dec, const mpd_spec_t *spec, const mpd_context_t *ctx, uint32_t *status);
+IMPORTEXPORT char *mpd_qformat_spec(const mpd_t *dec, const mpd_spec_t *spec, const mpd_context_t *ctx, uint32_t *status);
 IMPORTEXPORT char *mpd_qformat(const mpd_t *dec, const char *fmt, const mpd_context_t *ctx, uint32_t *status);
 
 #define MPD_NUM_FLAGS 15
@@ -321,11 +350,12 @@ IMPORTEXPORT void mpd_print(const mpd_t *dec);
 
 /* assignment from a string */
 IMPORTEXPORT void mpd_qset_string(mpd_t *dec, const char *s, const mpd_context_t *ctx, uint32_t *status);
+IMPORTEXPORT void mpd_qset_string_exact(mpd_t *dec, const char *s, uint32_t *status);
 
 /* set to NaN with error flags */
 IMPORTEXPORT void mpd_seterror(mpd_t *result, uint32_t flags, uint32_t *status);
 /* set a special with sign and type */
-IMPORTEXPORT void mpd_setspecial(mpd_t *dec, uint8_t sign, uint8_t type);
+IMPORTEXPORT void mpd_setspecial(mpd_t *result, uint8_t sign, uint8_t type);
 /* set coefficient to zero or all nines */
 IMPORTEXPORT void mpd_zerocoeff(mpd_t *result);
 IMPORTEXPORT void mpd_qmaxcoeff(mpd_t *result, const mpd_context_t *ctx, uint32_t *status);
@@ -335,9 +365,11 @@ IMPORTEXPORT void mpd_qset_ssize(mpd_t *result, mpd_ssize_t a, const mpd_context
 IMPORTEXPORT void mpd_qset_i32(mpd_t *result, int32_t a, const mpd_context_t *ctx, uint32_t *status);
 IMPORTEXPORT void mpd_qset_uint(mpd_t *result, mpd_uint_t a, const mpd_context_t *ctx, uint32_t *status);
 IMPORTEXPORT void mpd_qset_u32(mpd_t *result, uint32_t a, const mpd_context_t *ctx, uint32_t *status);
-#ifndef LEGACY_COMPILER
+#ifndef MPD_LEGACY_COMPILER
 IMPORTEXPORT void mpd_qset_i64(mpd_t *result, int64_t a, const mpd_context_t *ctx, uint32_t *status);
 IMPORTEXPORT void mpd_qset_u64(mpd_t *result, uint64_t a, const mpd_context_t *ctx, uint32_t *status);
+IMPORTEXPORT void mpd_qset_i64_exact(mpd_t *result, int64_t a, uint32_t *status);
+IMPORTEXPORT void mpd_qset_u64_exact(mpd_t *result, uint64_t a, uint32_t *status);
 #endif
 
 /* quietly assign a C integer type to an mpd_t with a static coefficient */
@@ -353,7 +385,7 @@ IMPORTEXPORT mpd_uint_t mpd_qabs_uint(const mpd_t *dec, uint32_t *status);
 
 IMPORTEXPORT int32_t mpd_qget_i32(const mpd_t *dec, uint32_t *status);
 IMPORTEXPORT uint32_t mpd_qget_u32(const mpd_t *dec, uint32_t *status);
-#ifndef LEGACY_COMPILER
+#ifndef MPD_LEGACY_COMPILER
 IMPORTEXPORT int64_t mpd_qget_i64(const mpd_t *dec, uint32_t *status);
 IMPORTEXPORT uint64_t mpd_qget_u64(const mpd_t *dec, uint32_t *status);
 #endif
@@ -363,9 +395,10 @@ IMPORTEXPORT int mpd_qcheck_nan(mpd_t *nanresult, const mpd_t *a, const mpd_cont
 IMPORTEXPORT int mpd_qcheck_nans(mpd_t *nanresult, const mpd_t *a, const mpd_t *b, const mpd_context_t *ctx, uint32_t *status);
 IMPORTEXPORT void mpd_qfinalize(mpd_t *result, const mpd_context_t *ctx, uint32_t *status);
 
-IMPORTEXPORT const char * mpd_class(const mpd_t *a, const mpd_context_t *ctx);
+IMPORTEXPORT const char *mpd_class(const mpd_t *a, const mpd_context_t *ctx);
 
-IMPORTEXPORT int mpd_qcopy(mpd_t *result, const mpd_t *a,  uint32_t *status);
+IMPORTEXPORT int mpd_qcopy(mpd_t *result, const mpd_t *a, uint32_t *status);
+IMPORTEXPORT int mpd_qcopy_cxx(mpd_t *result, const mpd_t *a);
 IMPORTEXPORT mpd_t *mpd_qncopy(const mpd_t *a);
 IMPORTEXPORT int mpd_qcopy_abs(mpd_t *result, const mpd_t *a, uint32_t *status);
 IMPORTEXPORT int mpd_qcopy_negate(mpd_t *result, const mpd_t *a, uint32_t *status);
@@ -448,7 +481,7 @@ IMPORTEXPORT void mpd_qlog10(mpd_t *result, const mpd_t *a, const mpd_context_t 
 IMPORTEXPORT void mpd_qsqrt(mpd_t *result, const mpd_t *a, const mpd_context_t *ctx, uint32_t *status);
 IMPORTEXPORT void mpd_qinvroot(mpd_t *result, const mpd_t *a, const mpd_context_t *ctx, uint32_t *status);
 
-#ifndef LEGACY_COMPILER
+#ifndef MPD_LEGACY_COMPILER
 IMPORTEXPORT void mpd_qadd_i64(mpd_t *result, const mpd_t *a, int64_t b, const mpd_context_t *ctx, uint32_t *status);
 IMPORTEXPORT void mpd_qadd_u64(mpd_t *result, const mpd_t *a, uint64_t b, const mpd_context_t *ctx, uint32_t *status);
 IMPORTEXPORT void mpd_qsub_i64(mpd_t *result, const mpd_t *a, int64_t b, const mpd_context_t *ctx, uint32_t *status);
@@ -477,7 +510,7 @@ IMPORTEXPORT size_t mpd_qexport_u32(uint32_t **rdata, size_t rlen, uint32_t base
 /*                           Signalling functions                             */
 /******************************************************************************/
 
-IMPORTEXPORT char * mpd_format(const mpd_t *dec, const char *fmt, mpd_context_t *ctx);
+IMPORTEXPORT char *mpd_format(const mpd_t *dec, const char *fmt, mpd_context_t *ctx);
 IMPORTEXPORT void mpd_import_u16(mpd_t *result, const uint16_t *srcdata, size_t srclen, uint8_t srcsign, uint32_t base, mpd_context_t *ctx);
 IMPORTEXPORT void mpd_import_u32(mpd_t *result, const uint32_t *srcdata, size_t srclen, uint8_t srcsign, uint32_t base, mpd_context_t *ctx);
 IMPORTEXPORT size_t mpd_export_u16(uint16_t **rdata, size_t rlen, uint32_t base, const mpd_t *src, mpd_context_t *ctx);
@@ -495,7 +528,7 @@ IMPORTEXPORT void mpd_set_ssize(mpd_t *result, mpd_ssize_t a, mpd_context_t *ctx
 IMPORTEXPORT void mpd_set_i32(mpd_t *result, int32_t a, mpd_context_t *ctx);
 IMPORTEXPORT void mpd_set_uint(mpd_t *result, mpd_uint_t a, mpd_context_t *ctx);
 IMPORTEXPORT void mpd_set_u32(mpd_t *result, uint32_t a, mpd_context_t *ctx);
-#ifndef LEGACY_COMPILER
+#ifndef MPD_LEGACY_COMPILER
 IMPORTEXPORT void mpd_set_i64(mpd_t *result, int64_t a, mpd_context_t *ctx);
 IMPORTEXPORT void mpd_set_u64(mpd_t *result, uint64_t a, mpd_context_t *ctx);
 #endif
@@ -504,7 +537,7 @@ IMPORTEXPORT mpd_uint_t mpd_get_uint(const mpd_t *a, mpd_context_t *ctx);
 IMPORTEXPORT mpd_uint_t mpd_abs_uint(const mpd_t *a, mpd_context_t *ctx);
 IMPORTEXPORT int32_t mpd_get_i32(const mpd_t *a, mpd_context_t *ctx);
 IMPORTEXPORT uint32_t mpd_get_u32(const mpd_t *a, mpd_context_t *ctx);
-#ifndef LEGACY_COMPILER
+#ifndef MPD_LEGACY_COMPILER
 IMPORTEXPORT int64_t mpd_get_i64(const mpd_t *a, mpd_context_t *ctx);
 IMPORTEXPORT uint64_t mpd_get_u64(const mpd_t *a, mpd_context_t *ctx);
 #endif
@@ -578,7 +611,7 @@ IMPORTEXPORT void mpd_ceil(mpd_t *result, const mpd_t *a, mpd_context_t *ctx);
 IMPORTEXPORT void mpd_sqrt(mpd_t *result, const mpd_t *a, mpd_context_t *ctx);
 IMPORTEXPORT void mpd_invroot(mpd_t *result, const mpd_t *a, mpd_context_t *ctx);
 
-#ifndef LEGACY_COMPILER
+#ifndef MPD_LEGACY_COMPILER
 IMPORTEXPORT void mpd_add_i64(mpd_t *result, const mpd_t *a, int64_t b, mpd_context_t *ctx);
 IMPORTEXPORT void mpd_add_u64(mpd_t *result, const mpd_t *a, uint64_t b, mpd_context_t *ctx);
 IMPORTEXPORT void mpd_sub_i64(mpd_t *result, const mpd_t *a, int64_t b, mpd_context_t *ctx);
@@ -618,7 +651,7 @@ IMPORTEXPORT EXTINLINE mpd_uint_t mpd_lsd(mpd_uint_t word);
 IMPORTEXPORT EXTINLINE mpd_ssize_t mpd_digits_to_size(mpd_ssize_t digits);
 /* number of digits in the exponent, undefined for MPD_SSIZE_MIN */
 IMPORTEXPORT EXTINLINE int mpd_exp_digits(mpd_ssize_t exp);
-IMPORTEXPORT EXTINLINE int mpd_iscanonical(const mpd_t *dec UNUSED);
+IMPORTEXPORT EXTINLINE int mpd_iscanonical(const mpd_t *dec);
 IMPORTEXPORT EXTINLINE int mpd_isfinite(const mpd_t *dec);
 IMPORTEXPORT EXTINLINE int mpd_isinfinite(const mpd_t *dec);
 IMPORTEXPORT EXTINLINE int mpd_isinteger(const mpd_t *dec);
@@ -714,24 +747,23 @@ IMPORTEXPORT void *mpd_sh_alloc(mpd_size_t struct_size, mpd_size_t nmemb, mpd_si
 
 IMPORTEXPORT mpd_t *mpd_qnew(void);
 IMPORTEXPORT mpd_t *mpd_new(mpd_context_t *ctx);
-IMPORTEXPORT mpd_t *mpd_qnew_size(mpd_ssize_t size);
-IMPORTEXPORT void mpd_del(mpd_t *dec);
+IMPORTEXPORT mpd_t *mpd_qnew_size(mpd_ssize_t nwords);
+IMPORTEXPORT EXTINLINE void mpd_del(mpd_t *dec);
 
-IMPORTEXPORT void mpd_uint_zero(mpd_uint_t *dest, mpd_size_t len);
-IMPORTEXPORT int mpd_qresize(mpd_t *result, mpd_ssize_t size, uint32_t *status);
-IMPORTEXPORT int mpd_qresize_zero(mpd_t *result, mpd_ssize_t size, uint32_t *status);
-IMPORTEXPORT void mpd_minalloc(mpd_t *result);
+IMPORTEXPORT EXTINLINE void mpd_uint_zero(mpd_uint_t *dest, mpd_size_t len);
+IMPORTEXPORT EXTINLINE int mpd_qresize(mpd_t *result, mpd_ssize_t nwords, uint32_t *status);
+IMPORTEXPORT EXTINLINE int mpd_qresize_zero(mpd_t *result, mpd_ssize_t nwords, uint32_t *status);
+IMPORTEXPORT EXTINLINE void mpd_minalloc(mpd_t *result);
 
-IMPORTEXPORT int mpd_resize(mpd_t *result, mpd_ssize_t size, mpd_context_t *ctx);
-IMPORTEXPORT int mpd_resize_zero(mpd_t *result, mpd_ssize_t size, mpd_context_t *ctx);
+IMPORTEXPORT int mpd_resize(mpd_t *result, mpd_ssize_t nwords, mpd_context_t *ctx);
+IMPORTEXPORT int mpd_resize_zero(mpd_t *result, mpd_ssize_t nwords, mpd_context_t *ctx);
 
+#undef IMPORTEXPORT
+#undef EXTINLINE
 
 #ifdef __cplusplus
 } /* END extern "C" */
 #endif
 
 
-#endif /* MPDECIMAL_H */
-
-
-
+#endif /* LIBMPDEC_MPDECIMAL_H_ */

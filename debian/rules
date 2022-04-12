@@ -17,10 +17,10 @@ ifneq ($(DEB_BUILD_MULTIARCH),$(DEB_HOST_MULTIARCH))
 endif
 
 %:
-	dh $@ --parallel --buildsystem=autoconf
+	dh $@ --buildsystem=autoconf
 
 binary binary-indep build build-indep:
-	dh $@ --parallel --buildsystem=autoconf --with sphinxdoc
+	dh $@ --buildsystem=autoconf --with sphinxdoc
 
 # work around debhelper, v9 overwrites CFLAGS in the build :-/
 
@@ -35,10 +35,7 @@ override_dh_auto_configure:
 
 override_dh_auto_test:
 ifeq (,$(findstring nocheck, $(DEB_BUILD_OPTIONS)))
-	$(MAKE) -C tests
-	: # needs download of tests, just run additional.decTest
-	ln -sf testdata_dist tests/testdata
-	cd tests && ./runtest ./additional.decTest
+	$(MAKE) check_local
 endif
 
 override_dh_makeshlibs:
@@ -50,12 +47,14 @@ override_dh_makeshlibs:
 
 override_dh_auto_install:
 	dh_auto_install
-	ln -sf libmpdec.so.2 debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/libmpdec.so
+	ln -sf libmpdec.so.3 debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/libmpdec.so
 
 override_dh_sphinxdoc:
-	rm -f debian/libmpdec-doc/usr/share/doc/libmpdec-doc/_static/{doctools,jquery,searchtools,sidebar,underscore}.js
+	rm -rf debian/tmp/usr/share/doc/mpdecimal/libmpdec++/_static
+	ln -sf ../libmpdec/_static debian/tmp/usr/share/doc/mpdecimal/libmpdec++/_static
+	rm -f debian/tmp/usr/share/doc/mpdecimal/libmpdec/_static/{doctools,jquery,searchtools,sidebar,underscore}.js
 	cp -p /usr/share/javascript/sphinxdoc/1.0/{doctools,jquery,searchtools,sidebar,underscore}.js \
-		debian/tmp/usr/share/doc/mpdecimal/_static/.
+		debian/tmp/usr/share/doc/mpdecimal/libmpdec/_static/.
 	cp -a debian/tmp/usr/share/doc/mpdecimal/* \
 		debian/libmpdec-doc/usr/share/doc/libmpdec-doc
 	rm -f debian/libmpdec-doc/usr/share/doc/libmpdec-doc/LICENSE*
