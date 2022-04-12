@@ -5,7 +5,6 @@ XSBC-Pexip-Original-Maintainer: Matthias Klose <doko@debian.org>
 Build-Depends: debhelper (>= 12),
 # gmp is only used when running the tests from the separate test tarball
  libgmp-dev
-Build-Depends-Indep: python3-sphinx
 Standards-Version: 4.5.1
 Section: libs
 Homepage: http://www.bytereef.org/mpdecimal/index.html
@@ -29,14 +28,5 @@ Pre-Depends: ${misc:Pre-Depends}
 Depends: ${shlibs:Depends}, ${misc:Depends}
 Breaks: libpython3.8-stdlib (<< 2.8.5-2)
 Description: library for decimal floating point arithmetic (runtime library)
- mpdecimal is a package for correctly-rounded arbitrary precision decimal
- floating point arithmetic.
-
-Package: libmpdec-doc
-Section: doc
-Architecture: all
-Multi-Arch: foreign
-Depends: ${misc:Depends}
-Description: library for decimal floating point arithmetic (documentation)
  mpdecimal is a package for correctly-rounded arbitrary precision decimal
  floating point arithmetic.

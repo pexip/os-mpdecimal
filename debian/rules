@@ -20,7 +20,7 @@ endif
 	dh $@ --buildsystem=autoconf
 
 binary binary-indep build build-indep:
-	dh $@ --buildsystem=autoconf --with sphinxdoc
+	dh $@ --buildsystem=autoconf
 
 # work around debhelper, v9 overwrites CFLAGS in the build :-/
 
@@ -48,15 +48,3 @@ override_dh_makeshlibs:
 override_dh_auto_install:
 	dh_auto_install
 	ln -sf libmpdec.so.3 debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/libmpdec.so
-
-override_dh_sphinxdoc:
-	rm -rf debian/tmp/usr/share/doc/mpdecimal/libmpdec++/_static
-	ln -sf ../libmpdec/_static debian/tmp/usr/share/doc/mpdecimal/libmpdec++/_static
-	rm -f debian/tmp/usr/share/doc/mpdecimal/libmpdec/_static/{doctools,jquery,searchtools,sidebar,underscore}.js
-	cp -p /usr/share/javascript/sphinxdoc/1.0/{doctools,jquery,searchtools,sidebar,underscore}.js \
-		debian/tmp/usr/share/doc/mpdecimal/libmpdec/_static/.
-	cp -a debian/tmp/usr/share/doc/mpdecimal/* \
-		debian/libmpdec-doc/usr/share/doc/libmpdec-doc
-	rm -f debian/libmpdec-doc/usr/share/doc/libmpdec-doc/LICENSE*
-	rm -f debian/libmpdec-doc/usr/share/doc/libmpdec-doc/INSTALL*
-	dh_sphinxdoc
