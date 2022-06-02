@@ -1,3 +1,9 @@
+mpdecimal (2.5.1-1pexip2) pexip; urgency=medium
+
+  * Initial bullseye build
+
+ -- Mark Hymers <mark.hymers@pexip.com>  Thu, 02 Jun 2022 14:42:35 +0100
+
 mpdecimal (2.5.1-1pexip1) pexip; urgency=medium
 
   * Don't build docs
