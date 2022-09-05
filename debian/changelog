@@ -1,3 +1,9 @@
+mpdecimal (2.5.1-1pexip5) pexip-bullseye; urgency=medium
+
+  * Bullseye rebuild for ARM64 inclusion
+
+ -- Mark Hymers <mark.hymers@pexip.com>  Mon, 05 Sep 2022 10:34:39 +0100
+
 mpdecimal (2.5.1-1pexip4) pexip-bullseye; urgency=medium
 
   * Rebuild for override changes
